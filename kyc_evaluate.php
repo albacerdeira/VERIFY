@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4. Prepara e registra a ação no log com o snapshot completo da avaliação
         $log_acao = sprintf("Status alterado para '%s'. Análise de risco final: %s.", htmlspecialchars($_POST['status_caso']), htmlspecialchars($_POST['av_risco_final']));
-        
+
         // Cria um array com todos os dados da avaliação para o snapshot
         $snapshot_data = [
             'status_caso' => $_POST['status_caso'],
@@ -128,8 +128,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'av_risco_midia_pep' => $_POST['av_risco_midia_pep'] ?? null,
             'av_risco_final' => $_POST['av_risco_final'] ?? null,
             'av_justificativa_risco' => $_POST['av_justificativa_risco'] ?? null,
-            'av_info_pendencia' => $_POST['av_info_pendencia'] ?? null
+            'av_info_pendencia' => $_POST['av_info_pendencia'] ?? null,
+            'analise_socios' => []
         ];
+
+        if (isset($_POST['socio_observacoes']) && is_array($_POST['socio_observacoes'])) {
+            foreach ($_POST['socio_observacoes'] as $socio_id => $observacoes) {
+                $snapshot_data['analise_socios'][$socio_id] = [
+                    'observacoes' => $observacoes,
+                    'verificado' => isset($_POST['socio_verificado'][$socio_id]) ? 1 : 0
+                ];
+            }
+        }
 
         $stmt_log = $pdo->prepare("INSERT INTO kyc_log_atividades (kyc_empresa_id, usuario_id, usuario_nome, acao, dados_avaliacao_snapshot) VALUES (:kyc_id, :user_id, :user_name, :acao, :snapshot)");
         $stmt_log->execute([
@@ -156,7 +166,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Os dados do $caso já foram carregados antes da checagem de permissão.
 
 // Carrega dados relacionados
-$socios = $pdo->prepare("SELECT * FROM kyc_socios WHERE empresa_id = :id");
+$socios = $pdo->prepare("
+    SELECT 
+        id, empresa_id, nome_completo, data_nascimento, cpf_cnpj, qualificacao_cargo, 
+        percentual_participacao, cep, logradouro, numero, complemento, bairro, cidade, uf, 
+        observacoes, is_pep, dados_validados, av_socio_verificado, av_socio_observacoes 
+    FROM kyc_socios 
+    WHERE empresa_id = :id
+");
 $socios->execute(['id' => $kyc_id]);
 
 $documentos = $pdo->prepare("SELECT * FROM kyc_documentos WHERE empresa_id = :id");
@@ -270,19 +287,27 @@ if (!function_exists('render_risk_select')) {
                     <div class="card-header"><h5 class="mb-0">Log de Atividades</h5></div>
                     <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                         <ul class="list-group list-group-flush">
-                            <?php foreach ($log_atividades->fetchAll(PDO::FETCH_ASSOC) as $log): ?>
+                            <?php 
+                            $logs = $log_atividades->fetchAll(PDO::FETCH_ASSOC);
+                            for ($i = 0; $i < count($logs); $i++):
+                                $log = $logs[$i];
+                                // O log anterior é o próximo no array, pois a consulta é em ordem decrescente.
+                                $previous_log_snapshot = isset($logs[$i + 1]) ? $logs[$i + 1]['dados_avaliacao_snapshot'] : 'null';
+                            ?>
                                 <li class="list-group-item">
                                     <p class="mb-1 small text-muted">
                                         <?= date('d/m/Y H:i', strtotime($log['timestamp'])) ?> por <strong><?= htmlspecialchars($log['nome_analista'] ?? 'Sistema') ?></strong>
                                     </p>
                                     <p class="mb-1"><?= htmlspecialchars($log['acao']) ?></p>
                                     <?php if (!empty($log['dados_avaliacao_snapshot'])): ?>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#logDetailModal" data-log-details="<?= htmlspecialchars($log['dados_avaliacao_snapshot']) ?>">
+                                        <button type="button" class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#logDetailModal" 
+                                                data-current-snapshot="<?= htmlspecialchars($log['dados_avaliacao_snapshot']) ?>"
+                                                data-previous-snapshot="<?= htmlspecialchars($previous_log_snapshot) ?>">
                                             Ver Detalhes
                                         </button>
                                     <?php endif; ?>
                                 </li>
-                            <?php endforeach; ?>
+                            <?php endfor; ?>
                         </ul>
                     </div>
                 </div>
@@ -322,21 +347,59 @@ document.addEventListener('DOMContentLoaded', function() {
     if (logDetailModal) {
         logDetailModal.addEventListener('show.bs.modal', function (event) {
             const button = event.relatedTarget;
-            const logDetailsJson = button.getAttribute('data-log-details');
-            const logDetails = JSON.parse(logDetailsJson);
-            const tableBody = logDetailModal.querySelector('#log-details-table');
+            const currentSnapshotJson = button.getAttribute('data-current-snapshot');
+            const previousSnapshotJson = button.getAttribute('data-previous-snapshot');
+
+            const currentSnapshot = JSON.parse(currentSnapshotJson);
+            const previousSnapshot = previousSnapshotJson ? JSON.parse(previousSnapshotJson) : {};
             
-            tableBody.innerHTML = '<thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody></tbody>';
-            const tbody = tableBody.querySelector('tbody');
+            const table = logDetailModal.querySelector('#log-details-table');
+            table.innerHTML = '<thead><tr><th style="width: 30%;">Campo</th><th style="width: 70%;">Valor</th></tr></thead><tbody></tbody>';
+            const tbody = table.querySelector('tbody');
 
-            for (const key in logDetails) {
-                let value = logDetails[key];
-                if (value === 1) value = 'Sim';
-                if (value === 0) value = 'Não';
-                if (value === null || value === '') value = 'N/A';
+            for (const key in currentSnapshot) {
+                if (key === 'analise_socios') {
+                    for (const socio_id in currentSnapshot.analise_socios) {
+                        const socio_analise = currentSnapshot.analise_socios[socio_id];
+                        const prev_socio_analise = previousSnapshot.analise_socios ? (previousSnapshot.analise_socios[socio_id] || null) : null;
 
-                const row = `<tr><td><strong>${key.replace(/_/g, ' ')}</strong></td><td>${value}</td></tr>`;
-                tbody.innerHTML += row;
+                        // Observações
+                        let obs_rowClass = '';
+                        if (prev_socio_analise && socio_analise.observacoes !== prev_socio_analise.observacoes) {
+                            obs_rowClass = 'table-danger';
+                        }
+                        const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${socio_analise.observacoes || 'N/A'}</td></tr>`;
+                        tbody.innerHTML += obs_row;
+
+                        // Verificado
+                        let ver_rowClass = '';
+                        if (prev_socio_analise && socio_analise.verificado !== prev_socio_analise.verificado) {
+                            ver_rowClass = 'table-danger';
+                        }
+                        const ver_row = `<tr class="${ver_rowClass}"><td><strong>Análise Sócio ${socio_id} - Verificado</strong></td><td>${socio_analise.verificado ? 'Sim' : 'Não'}</td></tr>`;
+                        tbody.innerHTML += ver_row;
+                    }
+                } else {
+                    let currentValue = currentSnapshot[key];
+                    let previousValue = previousSnapshot[key] ?? null;
+                    
+                    let displayValue = currentValue;
+                    if (displayValue === 1) displayValue = 'Sim';
+                    if (displayValue === 0) displayValue = 'Não';
+                    if (displayValue === null || displayValue === '') displayValue = 'N/A';
+
+                    let rowClass = '';
+                    if (previousSnapshot && currentValue !== previousValue) {
+                        rowClass = 'table-danger';
+                    }
+
+                    // Remove o prefixo "av " e capitaliza o campo
+                    let displayName = key.replace(/^av_/, '').replace(/_/g, ' ');
+                    displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+
+                    const row = `<tr class="${rowClass}"><td><strong>${displayName}</strong></td><td>${displayValue}</td></tr>`;
+                    tbody.innerHTML += row;
+                }
             }
         });
     }
