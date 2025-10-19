@@ -351,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const previousSnapshotJson = button.getAttribute('data-previous-snapshot');
 
             const currentSnapshot = JSON.parse(currentSnapshotJson);
-            const previousSnapshot = previousSnapshotJson ? JSON.parse(previousSnapshotJson) : {};
+            const previousSnapshot = (previousSnapshotJson && previousSnapshotJson !== 'null') ? JSON.parse(previousSnapshotJson) : null;
             
             const table = logDetailModal.querySelector('#log-details-table');
             table.innerHTML = '<thead><tr><th style="width: 30%;">Campo</th><th style="width: 70%;">Valor</th></tr></thead><tbody></tbody>';
@@ -361,12 +361,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (key === 'analise_socios') {
                     for (const socio_id in currentSnapshot.analise_socios) {
                         const socio_analise = currentSnapshot.analise_socios[socio_id];
-                        const prev_socio_analise = previousSnapshot.analise_socios ? (previousSnapshot.analise_socios[socio_id] || null) : null;
+                        const prev_socio_analise = (previousSnapshot && previousSnapshot.analise_socios) ? (previousSnapshot.analise_socios[socio_id] || null) : null;
 
                         // Observações
                         let obs_rowClass = '';
                         if (prev_socio_analise && socio_analise.observacoes !== prev_socio_analise.observacoes) {
-                            obs_rowClass = 'table-danger';
+                            obs_rowClass = (!prev_socio_analise.observacoes) ? 'table-info' : 'table-danger';
+                        } else if (!prev_socio_analise && socio_analise.observacoes) {
+                            obs_rowClass = 'table-info'; // Novo campo
                         }
                         const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${socio_analise.observacoes || 'N/A'}</td></tr>`;
                         tbody.innerHTML += obs_row;
@@ -381,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 } else {
                     let currentValue = currentSnapshot[key];
-                    let previousValue = previousSnapshot[key] ?? null;
+                    let previousValue = previousSnapshot ? (previousSnapshot[key] ?? null) : null;
                     
                     let displayValue = currentValue;
                     if (displayValue === 1) displayValue = 'Sim';
@@ -390,7 +392,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     let rowClass = '';
                     if (previousSnapshot && currentValue !== previousValue) {
-                        rowClass = 'table-danger';
+                        if (previousValue === null || previousValue === '') {
+                            rowClass = 'table-info'; // Azul para informação nova
+                        } else {
+                            rowClass = 'table-danger'; // Vermelho para alteração
+                        }
+                    } else if (!previousSnapshot && (currentValue !== null && currentValue !== '')) {
+                        rowClass = 'table-info'; // Azul se for a primeira análise e tiver valor
                     }
 
                     // Remove o prefixo "av " e capitaliza o campo
