@@ -57,22 +57,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_status = $pdo->prepare("UPDATE kyc_empresas SET status = :status WHERE id = :kyc_id");
         $stmt_status->execute([':status' => $_POST['status_caso'], ':kyc_id' => $kyc_id]);
 
-        // 2. Insere ou atualiza o registro de avaliação geral com o NOVO CHECKLIST
+        // 2. CORREÇÃO: Insere ou atualiza o registro de avaliação geral com TODOS os campos
         $avaliacao_sql = "
             INSERT INTO kyc_avaliacoes (
                 kyc_empresa_id, av_analista_id, 
-                av_check_dados_empresa_ok, av_check_perfil_negocio_ok, av_check_socios_ubos_ok, av_check_documentos_ok, 
+                av_check_dados_empresa_ok, av_check_perfil_negocio_ok, av_check_socios_ubos_ok, av_check_socios_ubos_origin, av_check_documentos_ok, 
                 av_anotacoes_internas, av_risco_atividade, av_risco_geografico, av_risco_societario, 
                 av_risco_midia_pep, av_risco_final, av_justificativa_risco, av_info_pendencia
             ) VALUES (
                 :kyc_id, :analista_id, 
-                :c1, :c2, :c3, :c4, 
+                :c1, :c2, :c3, :c3_origin, :c4, 
                 :anotacoes, :r1, :r2, :r3, :r4, :r_final, :justificativa, :pendencia
             ) ON DUPLICATE KEY UPDATE 
                 av_analista_id = VALUES(av_analista_id),
                 av_check_dados_empresa_ok = VALUES(av_check_dados_empresa_ok),
                 av_check_perfil_negocio_ok = VALUES(av_check_perfil_negocio_ok),
                 av_check_socios_ubos_ok = VALUES(av_check_socios_ubos_ok),
+                av_check_socios_ubos_origin = VALUES(av_check_socios_ubos_origin),
                 av_check_documentos_ok = VALUES(av_check_documentos_ok),
                 av_anotacoes_internas = VALUES(av_anotacoes_internas),
                 av_risco_atividade = VALUES(av_risco_atividade),
@@ -89,15 +90,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':c1' => isset($_POST['av_check_dados_empresa_ok']) ? 1 : 0, 
             ':c2' => isset($_POST['av_check_perfil_negocio_ok']) ? 1 : 0,
             ':c3' => isset($_POST['av_check_socios_ubos_ok']) ? 1 : 0, 
+            ':c3_origin' => $_POST['av_check_socios_ubos_origin'] ?? 'analyst',
             ':c4' => isset($_POST['av_check_documentos_ok']) ? 1 : 0,
             ':anotacoes' => $_POST['av_anotacoes_internas'] ?? null,
-            ':r1' => $_POST['av_risco_atividade'] ?? null, ':r2' => $_POST['av_risco_geografico'] ?? null,
-            ':r3' => $_POST['av_risco_societario'] ?? null, ':r4' => $_POST['av_risco_midia_pep'] ?? null,
-            ':r_final' => $_POST['av_risco_final'] ?? null, ':justificativa' => $_POST['av_justificativa_risco'] ?? null,
+            ':r1' => $_POST['av_risco_atividade'] ?? null, 
+            ':r2' => $_POST['av_risco_geografico'] ?? null,
+            ':r3' => $_POST['av_risco_societario'] ?? null, 
+            ':r4' => $_POST['av_risco_midia_pep'] ?? null,
+            ':r_final' => $_POST['av_risco_final'] ?? null, 
+            ':justificativa' => $_POST['av_justificativa_risco'] ?? null,
             ':pendencia' => $_POST['av_info_pendencia'] ?? null
         ]);
 
-        // 3. Atualiza a análise individual dos sócios (sem alteração aqui)
+        // 3. Atualiza a análise individual dos sócios
         if (isset($_POST['socio_observacoes']) && is_array($_POST['socio_observacoes'])) {
             $socio_update_sql = "UPDATE kyc_socios SET av_socio_verificado = :verificado, av_socio_observacoes = :observacoes WHERE id = :socio_id AND empresa_id = :kyc_id";
             $stmt_socio = $pdo->prepare($socio_update_sql);
@@ -114,12 +119,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4. Prepara e registra a ação no log com o snapshot completo da avaliação
         $log_acao = sprintf("Status alterado para '%s'. Análise de risco final: %s.", htmlspecialchars($_POST['status_caso']), htmlspecialchars($_POST['av_risco_final']));
 
-        // Cria um array com todos os dados da avaliação para o snapshot
+        // CORREÇÃO: Cria um array com todos os dados da avaliação para o snapshot
         $snapshot_data = [
             'status_caso' => $_POST['status_caso'],
             'av_check_dados_empresa_ok' => isset($_POST['av_check_dados_empresa_ok']) ? 1 : 0,
             'av_check_perfil_negocio_ok' => isset($_POST['av_check_perfil_negocio_ok']) ? 1 : 0,
             'av_check_socios_ubos_ok' => isset($_POST['av_check_socios_ubos_ok']) ? 1 : 0,
+            'av_check_socios_ubos_origin' => $_POST['av_check_socios_ubos_origin'] ?? 'analyst', // Campo adicionado
             'av_check_documentos_ok' => isset($_POST['av_check_documentos_ok']) ? 1 : 0,
             'av_anotacoes_internas' => $_POST['av_anotacoes_internas'] ?? null,
             'av_risco_atividade' => $_POST['av_risco_atividade'] ?? null,
@@ -155,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        $_SESSION['flash_message'] = "Erro ao salvar a análise. Detalhes: " . $e->getMessage();
+        $_SESSION['flash_error'] = "Erro ao salvar a análise. Detalhes: " . $e->getMessage();
         error_log("Erro ao salvar análise KYC para kyc_id=$kyc_id: " . $e->getMessage());
     }
     header("Location: kyc_list.php");
@@ -252,8 +258,9 @@ if (!function_exists('render_risk_select')) {
                                 <label class="form-check-label" for="c2">Perfil de Negócio e Financeiro</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="av_check_socios_ubos_ok" id="c3" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="c3">Sócios e Administradores (UBOs)</label>
+                                <input class="form-check-input" type="checkbox" name="av_check_socios_ubos_ok" id="av_check_socios_ubos_ok" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="av_check_socios_ubos_ok">Sócios e Administradores (UBOs)</label>
+                                <input type="hidden" name="av_check_socios_ubos_origin" id="av_check_socios_ubos_origin" value="<?= htmlspecialchars($caso['av_check_socios_ubos_origin'] ?? 'analyst') ?>">
                             </div>
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="av_check_documentos_ok" id="c4" <?= ($caso['av_check_documentos_ok'] ?? 0) ? 'checked' : ''; ?>>
@@ -301,8 +308,8 @@ if (!function_exists('render_risk_select')) {
                                     <p class="mb-1"><?= htmlspecialchars($log['acao']) ?></p>
                                     <?php if (!empty($log['dados_avaliacao_snapshot'])): ?>
                                         <button type="button" class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#logDetailModal" 
-                                                data-current-snapshot="<?= htmlspecialchars($log['dados_avaliacao_snapshot']) ?>"
-                                                data-previous-snapshot="<?= htmlspecialchars($previous_log_snapshot) ?>">
+                                                data-current-snapshot="<?= htmlspecialchars($log['dados_avaliacao_snapshot'], ENT_QUOTES, 'UTF-8') ?>"
+                                                data-previous-snapshot="<?= htmlspecialchars($previous_log_snapshot, ENT_QUOTES, 'UTF-8') ?>">
                                             Ver Detalhes
                                         </button>
                                     <?php endif; ?>
@@ -341,8 +348,89 @@ if (!function_exists('render_risk_select')) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // ... (código existente do togglePendencia) ...
+    // --- LÓGICA PARA CHECKLIST AUTOMÁTICO E SINCRONIZAÇÃO DE NOTAS (sem alteração) ---
+    const mainUboCheck = document.getElementById('av_check_socios_ubos_ok');
+    const uboCheckOrigin = document.getElementById('av_check_socios_ubos_origin');
+    const allUboChecks = document.querySelectorAll('.socio-verificado-checkbox');
+    const allUboNotes = document.querySelectorAll('.socio-observacoes-textarea');
+    const mainNotesTextarea = document.querySelector('[name="av_anotacoes_internas"]');
+    
+    const UBO_NOTES_HEADER = "--- ANOTAÇÕES DOS SÓCIOS (Gerado automaticamente) ---\n";
+    const UBO_NOTES_FOOTER = "\n--- FIM DAS ANOTAÇÕES DOS SÓCIOS ---";
+    const MANUAL_NOTES_HEADER = "\n\n--- ANOTAÇÕES MANUAIS DO ANALISTA ---";
 
+    function updateUboChecklist() {
+        if (allUboChecks.length === 0) return;
+        const allChecked = Array.from(allUboChecks).every(cb => cb.checked);
+        
+        if (allChecked && mainUboCheck.checked === false) {
+            mainUboCheck.checked = true;
+            if (uboCheckOrigin.value !== 'analyst') {
+                uboCheckOrigin.value = 'system';
+            }
+        } else if (!allChecked && mainUboCheck.checked === true && uboCheckOrigin.value === 'system') {
+            mainUboCheck.checked = false;
+        }
+    }
+
+    function syncUboNotes() {
+        let uboNotesContent = "";
+        allUboNotes.forEach(textarea => {
+            if (textarea.value.trim() !== "") {
+                const socioName = textarea.dataset.socioNome;
+                uboNotesContent += `Sócio "${socioName}": ${textarea.value.trim()}\n`;
+            }
+        });
+
+        let currentMainNotes = mainNotesTextarea.value;
+        let manualNotes = "";
+
+        const manualNotesIndex = currentMainNotes.indexOf(MANUAL_NOTES_HEADER);
+        if (manualNotesIndex !== -1) {
+            manualNotes = currentMainNotes.substring(manualNotesIndex + MANUAL_NOTES_HEADER.length).trim();
+        } else {
+            const autoNotesStartIndex = currentMainNotes.indexOf(UBO_NOTES_HEADER);
+            const autoNotesEndIndex = currentMainNotes.indexOf(UBO_NOTES_FOOTER);
+            if (autoNotesStartIndex !== -1 && autoNotesEndIndex !== -1) {
+                manualNotes = (currentMainNotes.substring(0, autoNotesStartIndex) + currentMainNotes.substring(autoNotesEndIndex + UBO_NOTES_FOOTER.length)).trim();
+            } else {
+                manualNotes = currentMainNotes;
+            }
+        }
+
+        let newMainNotes = "";
+        if (uboNotesContent) {
+            newMainNotes = UBO_NOTES_HEADER + uboNotesContent.trim() + UBO_NOTES_FOOTER;
+        }
+
+        if (manualNotes) {
+            newMainNotes += (newMainNotes ? MANUAL_NOTES_HEADER + "\n" : "") + manualNotes;
+        } else if (newMainNotes) {
+            newMainNotes += MANUAL_NOTES_HEADER;
+        }
+        
+        mainNotesTextarea.value = newMainNotes;
+    }
+
+    // Adiciona os listeners
+    allUboChecks.forEach(checkbox => {
+        checkbox.addEventListener('change', updateUboChecklist);
+    });
+
+    allUboNotes.forEach(textarea => {
+        textarea.addEventListener('input', syncUboNotes);
+    });
+
+    mainUboCheck.addEventListener('click', () => {
+        // Qualquer interação manual define a origem como 'analyst'
+        uboCheckOrigin.value = 'analyst';
+    });
+
+    // Executa as funções na inicialização para garantir o estado correto
+    updateUboChecklist();
+    syncUboNotes();
+
+    // --- CORREÇÃO: LÓGICA DO MODAL DE DETALHES DO LOG ---
     const logDetailModal = document.getElementById('logDetailModal');
     if (logDetailModal) {
         logDetailModal.addEventListener('show.bs.modal', function (event) {
@@ -357,56 +445,78 @@ document.addEventListener('DOMContentLoaded', function() {
             table.innerHTML = '<thead><tr><th style="width: 30%;">Campo</th><th style="width: 70%;">Valor</th></tr></thead><tbody></tbody>';
             const tbody = table.querySelector('tbody');
 
-            for (const key in currentSnapshot) {
-                if (key === 'analise_socios') {
-                    for (const socio_id in currentSnapshot.analise_socios) {
-                        const socio_analise = currentSnapshot.analise_socios[socio_id];
-                        const prev_socio_analise = (previousSnapshot && previousSnapshot.analise_socios) ? (previousSnapshot.analise_socios[socio_id] || null) : null;
+            const keyToNameMap = {
+                'status_caso': 'Status do Caso',
+                'av_check_dados_empresa_ok': 'Check: Dados da Empresa',
+                'av_check_perfil_negocio_ok': 'Check: Perfil de Negócio',
+                'av_check_socios_ubos_ok': 'Check: Sócios (UBOs)',
+                'av_check_socios_ubos_origin': 'Origem Check Sócios',
+                'av_check_documentos_ok': 'Check: Documentos',
+                'av_anotacoes_internas': 'Anotações Internas',
+                'av_risco_atividade': 'Risco: Atividade',
+                'av_risco_geografico': 'Risco: Geográfico',
+                'av_risco_societario': 'Risco: Estrutura Societária',
+                'av_risco_midia_pep': 'Risco: Mídia / PEP',
+                'av_risco_final': 'Risco Final',
+                'av_justificativa_risco': 'Justificativa do Risco',
+                'av_info_pendencia': 'Informações de Pendência'
+            };
 
-                        // Observações
-                        let obs_rowClass = '';
-                        if (prev_socio_analise && socio_analise.observacoes !== prev_socio_analise.observacoes) {
-                            obs_rowClass = (!prev_socio_analise.observacoes) ? 'table-info' : 'table-danger';
-                        } else if (!prev_socio_analise && socio_analise.observacoes) {
-                            obs_rowClass = 'table-info'; // Novo campo
-                        }
-                        const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${socio_analise.observacoes || 'N/A'}</td></tr>`;
-                        tbody.innerHTML += obs_row;
-
-                        // Verificado
-                        let ver_rowClass = '';
-                        if (prev_socio_analise && socio_analise.verificado !== prev_socio_analise.verificado) {
-                            ver_rowClass = 'table-danger';
-                        }
-                        const ver_row = `<tr class="${ver_rowClass}"><td><strong>Análise Sócio ${socio_id} - Verificado</strong></td><td>${socio_analise.verificado ? 'Sim' : 'Não'}</td></tr>`;
-                        tbody.innerHTML += ver_row;
-                    }
-                } else {
+            // Processa os campos principais
+            for (const key in keyToNameMap) {
+                if (currentSnapshot.hasOwnProperty(key)) {
                     let currentValue = currentSnapshot[key];
                     let previousValue = previousSnapshot ? (previousSnapshot[key] ?? null) : null;
                     
                     let displayValue = currentValue;
-                    if (displayValue === 1) displayValue = 'Sim';
-                    if (displayValue === 0) displayValue = 'Não';
+                    if (displayValue === 1 || displayValue === '1') displayValue = 'Sim';
+                    if (displayValue === 0 || displayValue === '0') displayValue = 'Não';
                     if (displayValue === null || displayValue === '') displayValue = 'N/A';
 
                     let rowClass = '';
-                    if (previousSnapshot && currentValue !== previousValue) {
-                        if (previousValue === null || previousValue === '') {
-                            rowClass = 'table-info'; // Azul para informação nova
-                        } else {
-                            rowClass = 'table-danger'; // Vermelho para alteração
+                    if (previousSnapshot) {
+                        // Compara os valores como strings para evitar problemas de tipo (ex: 1 vs "1")
+                        if (String(currentValue) !== String(previousValue)) {
+                            rowClass = 'table-warning'; // Amarelo para alteração
                         }
-                    } else if (!previousSnapshot && (currentValue !== null && currentValue !== '')) {
-                        rowClass = 'table-info'; // Azul se for a primeira análise e tiver valor
+                    } else {
+                        // Se for o primeiro log, destaca qualquer campo que tenha valor
+                        if (currentValue !== null && currentValue !== '' && currentValue !== 0) {
+                            rowClass = 'table-info'; // Azul para novos valores
+                        }
                     }
 
-                    // Remove o prefixo "av " e capitaliza o campo
-                    let displayName = key.replace(/^av_/, '').replace(/_/g, ' ');
-                    displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-
+                    const displayName = keyToNameMap[key];
                     const row = `<tr class="${rowClass}"><td><strong>${displayName}</strong></td><td>${displayValue}</td></tr>`;
                     tbody.innerHTML += row;
+                }
+            }
+
+            // Processa a análise dos sócios separadamente
+            if (currentSnapshot.analise_socios) {
+                for (const socio_id in currentSnapshot.analise_socios) {
+                    const socio_analise = currentSnapshot.analise_socios[socio_id];
+                    const prev_socio_analise = (previousSnapshot && previousSnapshot.analise_socios) ? (previousSnapshot.analise_socios[socio_id] || null) : null;
+
+                    // Observações do Sócio
+                    let obs_rowClass = '';
+                    if (prev_socio_analise && String(socio_analise.observacoes) !== String(prev_socio_analise.observacoes)) {
+                        obs_rowClass = 'table-warning';
+                    } else if (!prev_socio_analise && socio_analise.observacoes) {
+                        obs_rowClass = 'table-info';
+                    }
+                    const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${socio_analise.observacoes || 'N/A'}</td></tr>`;
+                    tbody.innerHTML += obs_row;
+
+                    // Verificação do Sócio
+                    let ver_rowClass = '';
+                    if (prev_socio_analise && String(socio_analise.verificado) !== String(prev_socio_analise.verificado)) {
+                        ver_rowClass = 'table-warning';
+                    } else if (!prev_socio_analise && (socio_analise.verificado == 1)) {
+                        ver_rowClass = 'table-info';
+                    }
+                    const ver_row = `<tr class="${ver_rowClass}"><td><strong>Análise Sócio ${socio_id} - Verificado</strong></td><td>${(socio_analise.verificado == 1) ? 'Sim' : 'Não'}</td></tr>`;
+                    tbody.innerHTML += ver_row;
                 }
             }
         });

@@ -137,12 +137,12 @@ if (count($socios_data) > 0) {
         <hr>
         <h6 class="mt-3">Análise de Compliance (do Analista)</h6>
         <div class="form-check mb-2 bg-light p-3 rounded">
-            <input class="form-check-input" type="checkbox" name="socio_verificado[<?= $socio_id ?>]" id="verificado_<?= $socio_id ?>" value="1" <?= ($socio['av_socio_verificado'] ?? 0) ? 'checked' : '' ?>>
+            <input class="form-check-input socio-verificado-checkbox" type="checkbox" name="socio_verificado[<?= $socio_id ?>]" id="verificado_<?= $socio_id ?>" value="1" <?= ($socio['av_socio_verificado'] ?? 0) ? 'checked' : '' ?>>
             <label class="form-check-label" for="verificado_<?= $socio_id ?>">Sócio Verificado</label>
         </div>
         <div class="mb-2">
-            <label for="obs_<?= $socio_id ?>" class="form-label small">Observações do Analista</label>
-            <textarea class="form-control" name="socio_observacoes[<?= $socio_id ?>]" id="obs_<?= $socio_id ?>" rows="3"><?= htmlspecialchars($socio['av_socio_observacoes'] ?? '') ?></textarea>
+            <label for="obs_<?= $socio_id ?>" class="form-label small">Observações do Analista sobre este Sócio</label>
+            <textarea class="form-control socio-observacoes-textarea" name="socio_observacoes[<?= $socio_id ?>]" id="obs_<?= $socio_id ?>" rows="3" data-socio-nome="<?= htmlspecialchars($socio['nome_completo'] ?? 'Sócio não identificado') ?>"><?= htmlspecialchars($socio['av_socio_observacoes'] ?? '') ?></textarea>
         </div>
         <?php
         $socio_content = ob_get_clean();
