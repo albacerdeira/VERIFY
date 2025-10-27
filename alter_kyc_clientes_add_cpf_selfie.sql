@@ -1,0 +1,3 @@
+ALTER TABLE `kyc_clientes`
+ADD COLUMN `cpf` VARCHAR(14) NULL DEFAULT NULL AFTER `nome_completo`,
+ADD COLUMN `selfie_path` VARCHAR(255) NULL DEFAULT NULL AFTER `password`;

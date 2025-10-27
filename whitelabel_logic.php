@@ -1,58 +1,43 @@
 <?php
-// whitelabel_logic.php (VERSÃO FINAL E ROBUSTA)
-
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
-require_once 'config.php';
-
-// --- INICIALIZAÇÃO DAS VARIÁVEIS DE CONTEXTO ---
-// Garante que as variáveis sempre existam para evitar erros.
-$nome_empresa_contexto = null;
-$logo_url_contexto = null;
-$cor_primaria_contexto = null;
+// Define os valores padrão da sua plataforma (Verify KYC).
+$nome_empresa_contexto = 'Verify KYC';
+$logo_url_contexto = 'imagens/verify-kyc.png'; // Logo padrão do seu aplicativo.
+$cor_variavel_contexto = '#4f46e5'; // Cor padrão.
 $id_empresa_master_contexto = null;
-$slug_contexto = null;
-$is_superadmin_on_kyc = false; // Flag para o seletor do superadmin.
+$slug_contexto = $_GET['cliente'] ?? null;
 
-// --- LÓGICA DE DECISÃO DE MARCA ---
-$slug_na_url = $_GET['cliente'] ?? null;
-$logged_in_user_role = $_SESSION['user_role'] ?? null;
+$empresa_id_para_buscar = null;
 
-// CENÁRIO 1: HÁ UM SLUG NA URL (Acesso público de cliente final ou Superadmin selecionou um parceiro)
-if (!empty($slug_na_url)) {
-    $stmt = $pdo->prepare(
-        "SELECT c.empresa_id, c.slug, c.nome_empresa, c.logo_url, c.cor_variavel 
-         FROM configuracoes_whitelabel c 
-         WHERE c.slug = :slug LIMIT 1"
-    );
-    $stmt->execute([':slug' => $slug_na_url]);
-    $config = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($config) {
-        $id_empresa_master_contexto = $config['empresa_id']; // CORREÇÃO APLICADA AQUI
-        $slug_contexto = $config['slug'];
-        $nome_empresa_contexto = $config['nome_empresa'];
-        $logo_url_contexto = $config['logo_url'];
-        $cor_primaria_contexto = $config['cor_variavel'];
+// Prioridade 1: Slug na URL (para links públicos/clientes).
+if ($slug_contexto) {
+    $stmt = $pdo->prepare("SELECT empresa_id FROM configuracoes_whitelabel WHERE slug = ?");
+    $stmt->execute([$slug_contexto]);
+    $result = $stmt->fetch();
+    if ($result) {
+        $empresa_id_para_buscar = $result['empresa_id'];
     }
 } 
-// CENÁRIO 2: NÃO HÁ SLUG NA URL, MAS UM USUÁRIO ESTÁ LOGADO
-else if (isset($_SESSION['empresa_id'])) {
-    $stmt = $pdo->prepare(
-        "SELECT c.empresa_id, c.slug, c.nome_empresa, c.logo_url, c.cor_variavel 
-         FROM configuracoes_whitelabel c 
-         WHERE c.empresa_id = :id LIMIT 1"
-    );
-    $stmt->execute([':id' => $_SESSION['empresa_id']]);
-    $config = $stmt->fetch(PDO::FETCH_ASSOC);
+// Prioridade 2: Usuário de parceiro logado (para o painel administrativo).
+elseif (isset($_SESSION['empresa_id'])) {
+    $empresa_id_para_buscar = $_SESSION['empresa_id'];
+}
+
+// Se um ID de empresa foi encontrado, busca as configurações de whitelabel.
+if ($empresa_id_para_buscar) {
+    $stmt = $pdo->prepare("SELECT nome_empresa, logo_url, cor_variavel, slug FROM configuracoes_whitelabel WHERE empresa_id = ?");
+    $stmt->execute([$empresa_id_para_buscar]);
+    $config = $stmt->fetch();
 
     if ($config) {
-        $id_empresa_master_contexto = $config['empresa_id']; // CORREÇÃO APLICADA AQUI
-        $slug_contexto = $config['slug'];
         $nome_empresa_contexto = $config['nome_empresa'];
-        $logo_url_contexto = $config['logo_url'];
-        $cor_primaria_contexto = $config['cor_variavel'];
+        // Usa o logo padrão se o do parceiro não estiver definido.
+        $logo_url_contexto = !empty($config['logo_url']) ? $config['logo_url'] : 'imagens/verify-kyc.png';
+        $cor_variavel_contexto = $config['cor_variavel'] ?: $cor_variavel_contexto;
+        $id_empresa_master_contexto = $empresa_id_para_buscar;
+        // Garante que o slug esteja definido para links de compartilhamento.
+        if (!$slug_contexto) { 
+            $slug_contexto = $config['slug'];
+        }
     }
 }
 

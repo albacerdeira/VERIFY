@@ -1,0 +1,23 @@
+# Arquivos e pastas do Composer
+/vendor/
+composer.lock
+
+# Arquivos de configuração de ambiente
+.env
+
+# Scripts de setup e arquivos temporários
+db_setup.php
+seed_data.php
+generate_hash.php
+
+# Logs
+*.log
+
+# Arquivos de sistema e de IDE
+.DS_Store
+.idea/
+.vscode/
+.idx/
+# Pastas de backup
+bkp 18-10/
+bkp 19_10/

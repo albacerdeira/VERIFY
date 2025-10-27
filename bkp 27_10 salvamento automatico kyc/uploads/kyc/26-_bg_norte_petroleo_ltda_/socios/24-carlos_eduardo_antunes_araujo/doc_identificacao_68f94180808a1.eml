@@ -1,0 +1,169 @@
+Delivered-To: cerdeira.alba@gmail.com
+Received: by 2002:a05:6a10:8c95:b0:670:ceae:6bcd with SMTP id ha21csp4447533pxb;
+        Wed, 22 Oct 2025 07:44:13 -0700 (PDT)
+X-Google-Smtp-Source: AGHT+IGS9iRite6yGCMN/Gr2BLVGP0guQHbcVy+PQXuBVLXBMmhZA06KTNbzKJkX/+K39SRNmkZH
+X-Received: by 2002:a17:903:38c8:b0:267:912b:2b36 with SMTP id d9443c01a7336-292ffc71444mr47344435ad.23.1761144252793;
+        Wed, 22 Oct 2025 07:44:12 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1761144252; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=MWi8G5drWfjlK0oVDg8r/dGc8/ozv/nblVj7dTj8+wvTKrVBxoLVo2YVD1BCX7WLIp
+         BdNI4knbUDomxIcbGyv/9CrLpbx5QzkEEyLLCAPP5zpU0JvIhfzZhUDAT1JHXcZeo6Bf
+         X8vbNcRbIhLZ2L25qJliVsDTsqtG+Tm83WSFX5AkJRZ3jZq4SzJvsgDt2f1VpkK3OgyO
+         v8SianZFxzxg4MD0vwgT3wDHyn6dk2YZ8nZj7h41ymMv9axjuBhqdsqcpZWkOD5QMlun
+         jMXvWmqXdVLjmNOI9skAg4WvqUMuLtu+vtuLA8D7zcK2ez3lceEIyIV7zIX3/9rW2OUG
+         igEA==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=date:content-transfer-encoding:mime-version:message-id:subject:from
+         :to:dkim-signature;
+        bh=lZvx1D+wuoZ2NeqiTfe3NUXs3KhTrc4TvRjPD9HB4W4=;
+        fh=mv2UiQ3qPTmHOGKvCnU2Vz8bTWN11QQv+ldGxtDFPBA=;
+        b=VbDtw6HXsm7ipdA2HKIzHYQJFurgrOphlgf8cwQPOi9uV/nGJgNdJ39WHo+QTlg4A4
+         2My3T9o2cZXBbJ6ryZ44i0EhemPSptAFAi6JJXA7GySqIrfUR8yNb6yfzkP87gOppkwj
+         z0J5q1sT4da0fkdk/HbRvWOtqjPBmpmA4W42RhFlujuAa+ojrEoZUluJvCwt+Tvyx71q
+         KlNdSCnCjWBven4qo/7xSOTSYrc0Z3B7KnMyYBrKd+XBUfywZWJA3CWckamuflabzdMp
+         lKWw2avUbxCzCApJO8rQ/tRj8LgaO6yd/FkdwyJD9G5y6nTJGIedYtj6dQGtRUwY4/wQ
+         Fesg==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@foconteudo.com.br header.s=hostingermail-a header.b="Bap/164B";
+       arc=pass (i=1);
+       spf=pass (google.com: domain of noreply@foconteudo.com.br designates 23.83.222.69 as permitted sender) smtp.mailfrom=noreply@foconteudo.com.br;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=foconteudo.com.br
+Return-Path: <noreply@foconteudo.com.br>
+Received: from giraffe.ash.relay.mailchannels.net (giraffe.ash.relay.mailchannels.net. [23.83.222.69])
+        by mx.google.com with ESMTPS id d9443c01a7336-29246ec7da5si84963535ad.82.2025.10.22.07.44.12
+        for <cerdeira.alba@gmail.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 22 Oct 2025 07:44:12 -0700 (PDT)
+Received-SPF: pass (google.com: domain of noreply@foconteudo.com.br designates 23.83.222.69 as permitted sender) client-ip=23.83.222.69;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@foconteudo.com.br header.s=hostingermail-a header.b="Bap/164B";
+       arc=pass (i=1);
+       spf=pass (google.com: domain of noreply@foconteudo.com.br designates 23.83.222.69 as permitted sender) smtp.mailfrom=noreply@foconteudo.com.br;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=foconteudo.com.br
+X-Sender-Id: hostingeremail|x-authuser|noreply@foconteudo.com.br
+Received: from relay.mailchannels.net (localhost [127.0.0.1])
+	by relay.mailchannels.net (Postfix) with ESMTP id 5D44B6C35E2
+	for <cerdeira.alba@gmail.com>; Wed, 22 Oct 2025 14:44:11 +0000 (UTC)
+Received: from fr-int-smtpout13.hostinger.io (100-118-36-55.trex-nlb.outbound.svc.cluster.local [100.118.36.55])
+	(Authenticated sender: hostingeremail)
+	by relay.mailchannels.net (Postfix) with ESMTPA id 83EA26C3707
+	for <cerdeira.alba@gmail.com>; Wed, 22 Oct 2025 14:44:06 +0000 (UTC)
+ARC-Seal: i=1; s=arc-2022; d=mailchannels.net; t=1761144246; a=rsa-sha256;
+	cv=none;
+	b=uSd9vX2EA9t4c80YfT7GqrksWLLgdCeLtohKSoTAakvMihXlBq/557mPlFmvpBpOq/wjTy
+	af3YAHsXa7NnjjZD9DgLZz0ByTC96jUXcVoddVcWokWHxMwftofDYcX8ZLloCZaFXIPd9q
+	3Ribd77Eiko4zJF+HY4MtQKfVP8IicLvkt4Yty4VyCHRbavUeCyeaFQbPxqa6ILAs4kq1B
+	YImVOcSTjnOgPAtlN2XwaZ1FaEz1veqBtqQ0T23t1o7TB8ZR7sJb8ibJnTMMaFHpI9HyDp
+	+bpEZG1WaEplEK+lWjNJgHcFHlOnbBGMoEgtNQFtbQcVwIuO0luiWwIsdVh3FA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed;
+ d=mailchannels.net;
+	s=arc-2022; t=1761144246;
+	h=from:from:reply-to:subject:subject:date:date:message-id:message-id:
+	 to:to:cc:mime-version:mime-version:content-type:content-type:
+	 content-transfer-encoding:content-transfer-encoding:dkim-signature;
+	bh=lZvx1D+wuoZ2NeqiTfe3NUXs3KhTrc4TvRjPD9HB4W4=;
+	b=qQb+dCxnpWYHYA/1LPsZ5eScgvebvFLqK+anhfRsx3X+sG4ACx/GqfJyJ4DgiiW0T5YR/3
+	pJx+cAUoUbsMmrxLK/OZFBapcIKr17t7htZqJP/XqwFsJRkrf996pzvAmR6MO3jro3x0NJ
+	VZ46+UaxsXWMKDI3g5l+wQrpaC6Ckowy7GgZsKRBlMx8Ttw7mGq1xbkq2xWIT8AKEcOf53
+	Vfv3Yygb/coi9J9c7Eg1/Wi/VA6bVhqPrYrdg0qFn3jlIJWE7tINY1FSeKUfeHF/3r3lsN
+	U/21ksSIRJKnatuEDYa+ua/7sMAqyZifH+MyRFDBRpbRqjFVDssbKawHL1vgOQ==
+ARC-Authentication-Results: i=1;
+	rspamd-869c579f6-qt5j5;
+	auth=pass smtp.auth=hostingeremail smtp.mailfrom=noreply@foconteudo.com.br
+X-Sender-Id: hostingeremail|x-authuser|noreply@foconteudo.com.br
+X-MC-Relay: Neutral
+X-MailChannels-SenderId: hostingeremail|x-authuser|noreply@foconteudo.com.br
+X-MailChannels-Auth-Id: hostingeremail
+X-Befitting-Society: 064a7fed03220819_1761144251053_2207948752
+X-MC-Loop-Signature: 1761144251053:3587281007
+X-MC-Ingress-Time: 1761144251052
+Received: from fr-int-smtpout13.hostinger.io (fr-int-smtpout13.hostinger.io
+ [148.222.54.40])
+	(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384)
+	by 100.118.36.55 (trex/7.1.3);
+	Wed, 22 Oct 2025 14:44:11 +0000
+Received: from kyc.verify2b.com (unknown [IPv6:2a02:4780:13:1993:0:2633:ba9:1])
+	(Authenticated sender: noreply@foconteudo.com.br)
+	by smtp.hostinger.com (smtp.hostinger.com) with ESMTPSA id 4csBkX3PwRzySw
+	for <cerdeira.alba@gmail.com>; Wed, 22 Oct 2025 14:44:04 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=foconteudo.com.br;
+	s=hostingermail-a; t=1761144244;
+	h=from:from:reply-to:subject:subject:date:date:message-id:message-id:
+	 to:to:cc:mime-version:mime-version:content-type:content-type:
+	 content-transfer-encoding:content-transfer-encoding;
+	bh=lZvx1D+wuoZ2NeqiTfe3NUXs3KhTrc4TvRjPD9HB4W4=;
+	b=Bap/164BjmrmHGVTJZunBPMBZzidmua9Fwy7y5wkbI7Sj0pha0ybF8cLOPFjGKbmljtvUC
+	6gRPkFZezGyChmEu0yMuh4AKLpI70gLeyiRcgZUOmb2v8Nwd2K71tX4GvjOUvdxLB67D6+
+	cbwsyar9ew+v/3GM6K+HaWMHj/p+GPhijXiFvTA2ba9zj+Zk4JT+UbJPPNieioVQ5tCc3m
+	Df8IonjKMMmsJvuHLCbRsDRzcfklKKfhiGWT8yODGniko0LUXVP+KlHAFQLbPFGaByNNb7
+	h0/Rbtif9ngVtBjD6sJTQf1KwJPvSgFqflNuFFfFxeW4IeHEObcMPcAaDQIJyQ==
+To: Alba Cerdeira <cerdeira.alba@gmail.com>
+From: B4U <noreply@foconteudo.com.br>
+Subject: Ative sua conta em B4U
+Message-ID: <gGJWv18a8CBP3kzYdvdBlOVG7YyU0hYdZW0o5wiPU@kyc.verify2b.com>
+X-Mailer: PHPMailer 6.10.0 (https://github.com/PHPMailer/PHPMailer)
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="b1=_gGJWv18a8CBP3kzYdvdBlOVG7YyU0hYdZW0o5wiPU"
+Content-Transfer-Encoding: 8bit
+Date: Wed, 22 Oct 2025 14:44:04 +0000 (UTC)
+X-CM-Analysis: v=2.4 cv=GbNFnhXL c=1 sm=1 tr=0 ts=68f8edb4 a=bfbC+7zpoUxF5vmUkXUFPA==:617 a=xqWC_Br6kY4A:10 a=sWKEhP36mHoA:10 a=g8TUdU_LZmEA:10 a=osb31sHeAAAA:8 a=mEKFMPUI61yxf17lff4A:9 a=CjuIK1q_8ugA:10 a=1uQEbYgXThMA:10 a=qF0LbrLrMcwA:10 a=iL5QhtQO2UvsE0R7DRwA:9 a=wLl9H_Ge83i9fhKZ:21 a=_W_S_7VecoQA:10 a=lqcHg5cX4UMA:10 a=3ZKOabzyN94A:10 a=QEXdDO2ut3YA:10 a=ImwWUX5h3JJ3gRE9moBe:22 a=8RYlvNRTLsSkW-wCn2Mp:22 a=ugC9Dzt3Wqlg-YTqDJ6e:22 a=ayUkUQMrhKEZ4TnpQdNC:22
+X-CM-Envelope: MS4xfGWViy1nHNtUnGbOX0/D5Vx1J5HhqPvxQWEueJGXsZ3ycjym8VCprLkhCUUltlonvqDYq4RVR8NRh5ZSV8uN/ZWkkbJRVylVqB1wKTDi354mKVIzFy9f r4g+h1y4ZALb5Ky0iijsjvxjIritpmNNwjXHzzLyQraU7lZJFXtdhwx1tiwo1bThbZP9plNzHYuLVgH/EIoF2dv5BcOhJgToopoG43wk2CSHz1VWMc1JGp6s f+sIKno5/NMqqcFiZl4dzA==
+X-AuthUser: noreply@foconteudo.com.br
+
+--b1=_gGJWv18a8CBP3kzYdvdBlOVG7YyU0hYdZW0o5wiPU
+Content-Type: text/plain; charset=us-ascii
+
+Para verificar seu e-mail, copie e cole este link em seu navegador: https://kyc.verify2b.com/cliente_verificacao.php?codigo=bd4741667c
+
+--b1=_gGJWv18a8CBP3kzYdvdBlOVG7YyU0hYdZW0o5wiPU
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f4f7f9;">
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <img src="{{logo_url}}" alt="{{empresa_nome}}" style="max-height: 60px;">
+        </div>
+        
+        <h2 style="color: #333; margin-bottom: 20px;">Bem-vindo(a) ao {{empresa_nome}}!</h2>
+        
+        <p style="color: #666; line-height: 1.6;">Olá {{nome}},</p>
+        
+        <p style="color: #666; line-height: 1.6;">Para ativar sua conta, clique no botão abaixo:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{verify_url}}" 
+               style="background-color: {{cor_variavel}}; 
+                      color: white; 
+                      padding: 12px 25px; 
+                      text-decoration: none; 
+                      border-radius: 4px; 
+                      display: inline-block;
+                      font-weight: 500;">
+                Ativar minha conta
+            </a>
+        </div>
+        
+        <p style="color: #666; line-height: 1.6;">Ou copie e cole este link no seu navegador:</p>
+        <p style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; word-break: break-all;">{{verify_url}}</p>
+        
+        <p style="color: #666; line-height: 1.6; margin-top: 30px;">Este link expira em 24 horas.</p>
+        
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px;">
+            <p>Este é um email automático, por favor não responda.</p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+--b1=_gGJWv18a8CBP3kzYdvdBlOVG7YyU0hYdZW0o5wiPU--
+

@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // Carrega as configurações do banco de dados e outras constantes.
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/whitelabel_logic.php'; // Carrega a lógica de branding centralizada.
 
 // --- 2. CONTEXTO DA PÁGINA E WHITELABEL ---
 
@@ -93,4 +94,13 @@ if ($script_depth > $root_depth) {
 // A variável $page_title deve ser definida na página ANTES de incluir o bootstrap.php
 $page_title_final = $page_title ?? $nome_empresa;
 
+// --- 6. CONTEXTO DO CLIENTE LOGADO ---
+$is_cliente_logged_in = false;
+if (isset($_SESSION['cliente_id'])) {
+    $is_cliente_logged_in = true;
+    $cliente_id = $_SESSION['cliente_id'];
+    $cliente_nome = $_SESSION['cliente_nome'];
+}
+// Variável especial para o seletor do superadmin no kyc_form.php
+$is_superadmin_on_kyc = $is_superadmin;
 ?>
