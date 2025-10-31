@@ -3,14 +3,17 @@ session_start();
 require 'config.php'; // Inclui a conexão com o banco de dados
 
 // --- LÓGICA DE BRANDING PARA A PÁGINA DE AGRADECIMENTO ---
-$partner_id = $_SESSION['thank_you_partner_id'] ?? null;
+$partner_id = $_SESSION['thank_you_partner_id'] ?? null; // Este ID é o 'id_empresa_master'
 
 // --- CORREÇÃO: Alterado logo padrão ---
 $logo_url = 'imagens/verify-kyc.png'; // Seu logo principal como fallback
 $nome_empresa_parceira = 'Nossa Plataforma';
 $cor_primaria = '#4f46e5';
+$slug_contexto = $_SESSION['thank_you_slug'] ?? null; // Recupera o slug para o botão de voltar
 
-if ($partner_id) {
+if ($partner_id && isset($pdo)) {
+    // --- CORREÇÃO AQUI ---
+    // Busca a configuração whitelabel usando 'empresa_id' que recebemos
     $stmt = $pdo->prepare("SELECT nome_empresa, logo_url, cor_variavel FROM configuracoes_whitelabel WHERE empresa_id = ?");
     $stmt->execute([$partner_id]);
     $config = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -26,10 +29,16 @@ $page_title = 'Obrigado por seu Envio';
 $submission_id = $_SESSION['submission_id'] ?? null;
 $flash_message = $_SESSION['flash_message'] ?? 'Seu formulário foi enviado com sucesso e está em análise.';
 
-unset($_SESSION['submission_id'], $_SESSION['flash_message'], $_SESSION['thank_you_partner_id']);
-?>
+// Limpa as variáveis de sessão usadas apenas nesta página
+unset($_SESSION['submission_id'], $_SESSION['flash_message'], $_SESSION['thank_you_partner_id'], $_SESSION['thank_you_slug']);
 
-<!-- --- CORREÇÃO: Layout minimalista autônomo --- -->
+// --- CORREÇÃO DE CACHE-BUSTING PARA O LOGO ---
+$logo_path_servidor = ltrim(htmlspecialchars($logo_url), '/');
+$logo_cache_buster = file_exists($logo_path_servidor) ? '?v=' . filemtime($logo_path_servidor) : '';
+$logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
+// --- FIM DA CORREÇÃO ---
+
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -59,7 +68,7 @@ unset($_SESSION['submission_id'], $_SESSION['flash_message'], $_SESSION['thank_y
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card shadow-sm text-center p-4 p-md-5">
-                    <img src="<?php echo htmlspecialchars($logo_url); ?>" alt="Logo da Empresa" style="max-width: 150px; margin: 0 auto 2rem auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
+                    <img src="<?php echo $logo_url_final; ?>" alt="Logo da Empresa" style="max-width: 150px; margin: 0 auto 2rem auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
                     
                     <h2 class="mb-3" style="color: <?= htmlspecialchars($cor_primaria); ?>;">Formulário Enviado com Sucesso!</h2>
                     
@@ -75,12 +84,20 @@ unset($_SESSION['submission_id'], $_SESSION['flash_message'], $_SESSION['thank_y
                     <p>Entraremos em contato em breve pelo e-mail cadastrado no formulário.</p>
                     
                     <div class="mt-5">
-                        <?php if (isset($_SESSION['user_id'])): // Se o usuário estiver logado, o botão leva para o dashboard ?>
-                            <a href="dashboard.php" class="btn btn-primary btn-lg">Voltar ao Painel</a>
-                        <?php elseif (isset($_SESSION['cliente_id'])): // Se for um cliente logado ?>
+                        <?php 
+                        // Constrói o link de login com o slug, se existir
+                        $login_url_com_slug = 'cliente_login.php';
+                        if ($slug_contexto) {
+                            $login_url_com_slug .= '?cliente=' . htmlspecialchars($slug_contexto);
+                        }
+
+                        if (isset($_SESSION['user_id'])): // Se o usuário admin estiver logado, o botão leva para a lista
+                            ?>
+                            <a href="kyc_list.php" class="btn btn-primary btn-lg">Voltar para Análises</a>
+                        <?php elseif (isset($_SESSION['cliente_id'])): // Se for um cliente logado, leva para o dashboard (URL já terá o slug) ?>
                              <a href="cliente_dashboard.php" class="btn btn-primary btn-lg">Voltar ao seu Painel</a>
-                        <?php else: // Se não estiver logado, o botão pode levar para a página de login ou outra página pública ?>
-                            <p class="text-muted small">Se você já tem uma conta, pode acompanhar o status por lá.</p>
+                        <?php else: // Se não estiver logado, o botão leva para a página de login (com o slug) ?>
+                            <a href="<?= $login_url_com_slug ?>" class="btn btn-primary btn-lg">Acessar Painel do Cliente</a>
                         <?php endif; ?>
                     </div>
                 </div>

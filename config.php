@@ -12,7 +12,7 @@ define('DB_HOST', 'localhost');
 define('DB_USER', 'u640879529_kyc');
 define('DB_PASS', '005@Fabio');
 define('DB_NAME', 'u640879529_kyc');
-define('SITE_URL', 'https://kyc.verify2b.com');
+define('SITE_URL', 'https://verify2b.com');
 
 // --- CRIAÇÃO DA CONEXÃO PDO ---
 try {

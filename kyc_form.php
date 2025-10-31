@@ -2,14 +2,59 @@
 $page_title = 'Formulário de Know Your Customer (KYC)';
 require_once 'bootstrap.php';
 
-// --- LÓGICA DE REFORÇO WHITELABEL ---
+// --- CORREÇÃO: LÓGICA DE CONTEXTO PARA CLIENTE LOGADO ---
+// Se um cliente estiver logado, suas informações de sessão têm prioridade sobre a URL.
+if (isset($_SESSION['cliente_id'])) {
+    try {
+        // --- CORREÇÃO AQUI: Troca 'c.whitelabel_parceiro_id' por 'c.id_empresa_master' ---
+        // --- E o JOIN ON usa 'w.empresa_id' ---
+        $stmt_cliente_contexto = $pdo->prepare(
+            "SELECT c.id_empresa_master, w.slug, w.nome_empresa, w.cor_variavel
+             FROM kyc_clientes c
+             LEFT JOIN configuracoes_whitelabel w ON c.id_empresa_master = w.empresa_id
+             WHERE c.id = ?"
+        );
+        $stmt_cliente_contexto->execute([$_SESSION['cliente_id']]);
+        $cliente_contexto = $stmt_cliente_contexto->fetch(PDO::FETCH_ASSOC);
+
+        if ($cliente_contexto) {
+            // Sobrescreve as variáveis que podem ter sido definidas em bootstrap.php pela URL
+            $id_empresa_master_contexto = $cliente_contexto['id_empresa_master'];
+            $slug_contexto = $cliente_contexto['slug'];
+            $nome_empresa_contexto = $cliente_contexto['nome_empresa'];
+            $cor_variavel_contexto = $cliente_contexto['cor_variavel'];
+        } else {
+            // Caso de erro de integridade de dados (ou cliente sem empresa master associada)
+            // Não lançamos um erro, apenas seguimos com o contexto da URL ou padrão.
+             error_log("Cliente logado (ID: {$_SESSION['cliente_id']}) não possui id_empresa_master ou whitelabel correspondente.");
+        }
+
+    } catch (Exception $e) {
+        // Exibe um erro seguro sem quebrar a página
+        $header_file = isset($_SESSION['user_id']) ? 'header.php' : 'form_header.php';
+        $footer_file = isset($_SESSION['user_id']) ? 'footer.php' : 'form_footer.php';
+        require $header_file;
+        echo '<div class="container mt-4"><div class="alert alert-danger"><strong>Erro:</strong> ' . htmlspecialchars($e->getMessage()) . '</div></div>';
+        require $footer_file;
+        exit();
+    }
+}
+// --- FIM DA CORREÇÃO ---
+
+// --- LÓGICA DE REFORÇO WHITELABEL (Fallback) ---
+// Se o contexto do cliente não foi carregado (ex: admin ou slug na URL)
 if (empty($cor_variavel_contexto) && !empty($slug_contexto)) {
     try {
-        $stmt = $pdo->prepare("SELECT cor_variavel FROM configuracoes_whitelabel WHERE slug = ?");
+        // A view 'view_whitelabel_context' já deve fazer o JOIN correto.
+        // Se ela não existir, usamos a consulta direta:
+        $stmt = $pdo->prepare("SELECT empresa_id, cor_variavel, nome_empresa FROM configuracoes_whitelabel WHERE slug = ?");
         $stmt->execute([$slug_contexto]);
-        $config_reforco = $stmt->fetch();
-        if ($config_reforco && !empty($config_reforco['cor_variavel'])) {
-            $cor_variavel_contexto = $config_reforco['cor_variavel'];
+        $config_reforco = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($config_reforco) {
+            if (empty($cor_variavel_contexto)) $cor_variavel_contexto = $config_reforco['cor_variavel'];
+            if (empty($nome_empresa_contexto)) $nome_empresa_contexto = $config_reforco['nome_empresa'];
+            if (empty($id_empresa_master_contexto)) $id_empresa_master_contexto = $config_reforco['empresa_id'];
         }
     } catch (PDOException $e) {
         error_log("Erro no reforço whitelabel em kyc_form.php: " . $e->getMessage());
@@ -32,8 +77,6 @@ $cor_final_whitelabel = $cor_variavel_contexto ?? ($_SESSION['cor_variavel'] ?? 
     .form-section-title { color: var(--primary-color); border-bottom-color: var(--primary-color); }
     .btn-primary, .btn-success { background-color: var(--primary-color); border-color: var(--primary-color); }
     .btn-primary:hover, .btn-success:hover { filter: brightness(0.9); background-color: var(--primary-color); border-color: var(--primary-color); }
-
-    /* Estilos Visuais e de UI idênticos à especificação */
     .progress-bar-container { display: flex; justify-content: space-between; counter-reset: step; margin-bottom: 2rem; max-width: 900px; margin-left: auto; margin-right: auto; }
     .progress-step { width: 2.5rem; height: 2.5rem; background-color: #d1d5db; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; color: white; position: relative; transition: background-color: 0.4s ease; }
     .progress-step::before { counter-increment: step; content: counter(step); }
@@ -41,31 +84,31 @@ $cor_final_whitelabel = $cor_variavel_contexto ?? ($_SESSION['cor_variavel'] ?? 
     .progress-step-label { position: absolute; top: calc(100% + 5px); font-size: 0.8rem; color: #6b7280; text-align: center; width: 100px; left: 50%; transform: translateX(-50%); }
     .form-step { display: none; animation: fadeIn 0.5s ease-out forwards; }
     .form-step.active { display: block; }
-    .form-section-title { font-size: 1.1rem; font-weight: 500; color: var(--primary-color, #4f46e5); border-bottom: 2px solid var(--primary-color, #4f46e5); padding-bottom: .5rem; margin-bottom: 1.5rem; }
-    .spinner-container { position: relative; }
-    .spinner-border-sm { display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
-    .spinner-container.loading .form-control { padding-right: 2.5rem; }
-    .spinner-container.loading .spinner-border-sm { display: block; }
-    .is-invalid { border-color: #dc3545; }
-    .invalid-feedback { display: none; width: 100%; margin-top: .25rem; font-size: 80%; color: #dc3545; }
-    .is-invalid ~ .invalid-feedback, .is-invalid + .invalid-feedback { display: block; }
-    .ubo-card, .cnae-card { border: 1px solid #dee2e6; border-radius: .25rem; margin-bottom: 1.5rem; background: #fdfdfd; }
-    .ubo-card .card-header, .cnae-card .card-header { background-color: #f8f9fa; padding: 0.75rem 1.25rem; display: flex; justify-content: space-between; align-items: center; }
-    .ubo-card .card-body, .cnae-card .card-body { padding: 1.25rem; }
-    .ubo-card .card-footer { background-color: #f8f9fa; padding: 0.75rem 1.25rem; }
+
+    .spinner-container {
+        position: relative; 
+    }
+    .spinner-container .spinner-border {
+        display: none; 
+        position: absolute;
+        right: 20px; 
+        top: 70%;    
+        transform: translateY(-50%);
+    }
+    .spinner-container.loading .spinner-border {
+        display: block; 
+    }
 </style>
 
 <div class="container bg-white p-4 p-md-5 rounded shadow-sm">
 
     <?php
-    // --- BLOCO DO SELETOR PARA SUPERADMIN ---
-    // Este seletor só aparece se o usuário for Superadmin e não houver um 'slug' na URL.
     if ($is_superadmin_on_kyc && !isset($_GET['cliente'])):
         $empresas_parceiras = $pdo->query("SELECT c.slug, c.nome_empresa FROM configuracoes_whitelabel c WHERE c.slug IS NOT NULL ORDER BY c.nome_empresa")->fetchAll(PDO::FETCH_ASSOC);
     ?>
         <div class="alert alert-info mb-4">
             <h5 class="alert-heading">Modo Superadmin</h5>
-            <p>Selecione um parceiro abaixo para carregar o formulário com a marca e o vínculo corretos. Se não selecionar, o envio não será associado a nenhum parceiro.</p>
+            <p>Selecione um parceiro abaixo para carregar o formulário com a marca e o vínculo corretos.</p>
             <select id="partner-selector" class="form-select">
                 <option value="">Selecione um parceiro...</option>
                 <?php foreach ($empresas_parceiras as $parceiro): ?>
@@ -81,95 +124,70 @@ $cor_final_whitelabel = $cor_variavel_contexto ?? ($_SESSION['cor_variavel'] ?? 
     <?php endif; ?>
 
     <?php
-    // --- BLOCO DE COMPARTILHAMENTO PARA USUÁRIOS LOGADOS ---
     $link_completo = '';
     if (isset($_SESSION['user_id']) && !empty($slug_contexto)) {
         $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
         $host = $_SERVER['HTTP_HOST'];
         $caminho_base = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
-        $link_completo = "{$protocolo}://{$host}{$caminho_base}/kyc_form.php?cliente={$slug_contexto}";
+        
+        // --- ALTERAÇÃO SOLICITADA ---
+        // O link agora aponta para 'cliente_login.php' em vez de 'kyc_form.php'
+        $link_completo = "{$protocolo}://{$host}{$caminho_base}/cliente_login.php?cliente={$slug_contexto}";
     }
 
     if (!empty($link_completo)):
     ?>
         <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-between bg-light p-3 rounded mb-4" id="share-bar">
             <div class="mb-2 mb-md-0">
-                <strong class="me-3">Compartilhar Formulário:</strong>
+                <strong class="me-3">Compartilhar Login:</strong> 
                 <input type="hidden" value="<?= htmlspecialchars($link_completo) ?>" id="share-link-input">
             </div>
             <div>
-                <button class="btn btn-success btn-sm me-2" type="button" id="copy-btn">
-                    <i class="fas fa-link"></i> Convite+Link
-                </button>
-                <button class="btn btn-outline-secondary btn-sm me-2" type="button" id="copy-link-only-btn">
-                    <i class="fas fa-copy"></i> Só Link
-                </button>
+                <button class="btn btn-success btn-sm me-2" type="button" id="copy-btn"><i class="fas fa-link"></i> Convite+Link</button>
+                <button class="btn btn-outline-secondary btn-sm me-2" type="button" id="copy-link-only-btn"><i class="fas fa-copy"></i> Só Link</button>
                 <a href="#" id="whatsapp-btn" class="btn btn-light btn-sm border me-2" target="_blank"><i class="fab fa-whatsapp"></i> WhatsApp</a>
                 <a href="#" id="email-btn" class="btn btn-light btn-sm border" target="_blank"><i class="fas fa-envelope"></i> E-mail</a>
                 <span id="copy-success" class="text-success ms-2" style="display:none; font-size: 0.9em;">Copiado!</span>
             </div>
         </div>
-        <!-- CORREÇÃO: Substituir Font Awesome por versão CDN que funciona -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
         <script>
-        // Este script precisa ser executado antes do script principal do formulário
         document.addEventListener('DOMContentLoaded', function() {
-            // Verifica se a barra de compartilhamento existe antes de rodar o script
             if (!document.getElementById('share-bar')) return;
-
             const shareUrl = document.getElementById('share-link-input').value;
-            const copyBtn = document.getElementById('copy-btn');
-            const copyLinkOnlyBtn = document.getElementById('copy-link-only-btn');
-            const copySuccess = document.getElementById('copy-success');
-            const emailBtn = document.getElementById('email-btn');
-            const whatsappBtn = document.getElementById('whatsapp-btn');
             const nomeDaEmpresa = "<?= htmlspecialchars($nome_empresa_contexto ?? 'nossa empresa') ?>";
+            
+            // --- ALTERAÇÃO SOLICITADA (TEXTOS) ---
+            // Os textos foram atualizados para refletir o link de login
+            const copyText = `Olá! Acesse a área do cliente em ${nomeDaEmpresa} através do link: ${shareUrl}`;
+            const emailSubject = encodeURIComponent(`Acesso à Área do Cliente ${nomeDaEmpresa}`);
+            const emailBody = encodeURIComponent(`Olá,\n\nPara acessar sua área do cliente, utilize o link abaixo:\n\n${shareUrl}\n\nAtenciosamente,\nEquipe ${nomeDaEmpresa}`);
+            // --- FIM DA ALTERAÇÃO ---
+            
+            const whatsappText = encodeURIComponent(copyText);
 
-            // Define os textos para cada ação
-            const copyText = `Olá! Para iniciar o seu cadastro em ${nomeDaEmpresa}, por favor, preencha nosso formulário de KYC através do link: ${shareUrl}`;
-            const emailSubject = encodeURIComponent(`Ação Necessária: Preenchimento do Formulário KYC para ${nomeDaEmpresa}`);
-            const emailBody = encodeURIComponent(`Olá,\n\nPara iniciar o nosso processo de cadastro, por favor, acesse o link abaixo e preencha o formulário de Know Your Customer (KYC):\n\n${shareUrl}\n\nAtenciosamente,\nEquipe ${nomeDaEmpresa}`);
-            const whatsappText = encodeURIComponent(copyText); // Reutiliza o mesmo texto base
+            document.getElementById('email-btn').href = `mailto:?subject=${emailSubject}&body=${emailBody}`;
+            document.getElementById('whatsapp-btn').href = `https://api.whatsapp.com/send?text=${whatsappText}`;
 
-            // Configura os botões
-            if (emailBtn) { emailBtn.href = `mailto:?subject=${emailSubject}&body=${emailBody}`; }
-            if (whatsappBtn) { whatsappBtn.href = `https://api.whatsapp.com/send?text=${whatsappText}`; }
-
-            if(copyBtn) {
-                copyBtn.addEventListener('click', function() {
-                    navigator.clipboard.writeText(copyText).then(() => {
-                        copySuccess.textContent = 'Convite copiado!';
-                        copySuccess.style.display = 'inline';
-                        copyBtn.innerHTML = '<i class="fas fa-check"></i> Copiado!';
-                        
-                        setTimeout(() => {
-                            copySuccess.style.display = 'none';
-                            copyBtn.innerHTML = '<i class="fas fa-link"></i> Convite+Link';
+            function setupCopy(buttonId, textToCopy, successMsg) {
+                const btn = document.getElementById(buttonId);
+                const successSpan = document.getElementById('copy-success');
+                if (!btn) return;
+                btn.addEventListener('click', function() {
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        successSpan.textContent = successMsg;
+                        successSpan.style.display = 'inline';
+                        const originalHtml = btn.innerHTML;
+                        btn.innerHTML = '<i class="fas fa-check"></i> Copiado!';
+                        setTimeout(() => { 
+                            successSpan.style.display = 'none';
+                            btn.innerHTML = originalHtml;
                         }, 2500);
-                    }).catch(err => {
-                        console.error('Falha ao copiar o texto: ', err);
-                        alert('Não foi possível copiar o texto.');
                     });
                 });
             }
-
-            if(copyLinkOnlyBtn) {
-                copyLinkOnlyBtn.addEventListener('click', function() {
-                    navigator.clipboard.writeText(shareUrl).then(() => {
-                        copySuccess.textContent = 'Link copiado!';
-                        copySuccess.style.display = 'inline';
-                        copyLinkOnlyBtn.innerHTML = '<i class="fas fa-check"></i> Copiado!';
-                        
-                        setTimeout(() => {
-                            copySuccess.style.display = 'none';
-                            copyLinkOnlyBtn.innerHTML = '<i class="fas fa-copy"></i> Só Link';
-                        }, 2500);
-                    }).catch(err => {
-                        console.error('Falha ao copiar o link: ', err);
-                        alert('Não foi possível copiar o link.');
-                    });
-                });
-            }
+            setupCopy('copy-btn', copyText, 'Convite copiado!');
+            setupCopy('copy-link-only-btn', shareUrl, 'Link copiado!');
         });
         </script>
     <?php endif; ?>
@@ -181,15 +199,11 @@ $cor_final_whitelabel = $cor_variavel_contexto ?? ($_SESSION['cor_variavel'] ?? 
 
     <form action="kyc_submit.php" method="POST" enctype="multipart/form-data" id="kyc-form" novalidate>
         
-        <input type="hidden" name="id_empresa_master" value="<?php echo htmlspecialchars($id_empresa_master_contexto ?? ''); ?>">
-        <input type="hidden" name="cliente_slug" value="<?php echo htmlspecialchars($slug_contexto ?? ''); ?>">
-        
-        <!-- NOVO: Campo para armazenar o ID da submissão entre as etapas -->
+        <input type="hidden" name="id_empresa_master" value="<?= htmlspecialchars($id_empresa_master_contexto ?? ''); ?>">
+        <input type="hidden" name="cliente_slug" value="<?= htmlspecialchars($slug_contexto ?? ''); ?>">
         <input type="hidden" name="submission_id" id="submission_id">
 
-        <!-- ================================================================== -->
-        <!-- INÍCIO DO CONTEÚDO COMPLETO DO FORMULÁRIO (TODAS AS ETAPAS) -->
-        <div class="form-step active" data-step="1">
+           <div class="form-step active" data-step="1">
             <h5 class="form-section-title">1. Dados da Empresa</h5>
             <div class="row">
                 <div class="form-group col-md-4 spinner-container" id="cnpj-container">
@@ -327,7 +341,7 @@ $cor_final_whitelabel = $cor_variavel_contexto ?? ($_SESSION['cor_variavel'] ?? 
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="consentimento_termos" name="termos[consentimento]" required>
                     <label class="form-check-label" for="consentimento_termos">
-                        Declaro que as informações prestadas são verdadeiras e autorizo o uso destas dados para a finalidade exclusiva de análise de compliance pela <?php echo htmlspecialchars($nome_empresa); ?>, em conformidade com a Lei Geral de Proteção de Dados (LGPD). *
+                        Declaro que as informações prestadas são verdadeiras e autorizo o uso destas dados para a finalidade exclusiva de análise de compliance pela <?php echo htmlspecialchars($nome_empresa_contexto ?? 'nossa empresa'); ?>, em conformidade com a Lei Geral de Proteção de Dados (LGPD). *
                     </label>
                     <div class="invalid-feedback">Você deve aceitar os termos para continuar.</div>
                 </div>
@@ -550,156 +564,130 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     }
     
-    // --- LÓGICA DE API ---
-    async function fetchEmpresaCEPData() {
-        const cepValue = empresaCepInput.value.replace(/\D/g, '');
-        const spinnerContainer = empresaCepInput.parentElement;
-        const invalidFeedback = spinnerContainer.querySelector('.invalid-feedback');
+// --- LÓGICA DE API (VERSÃO LIMPA, SEM LOGS) ---
+async function fetchEmpresaCEPData() {
+    const cepValue = empresaCepInput.value.replace(/\D/g, '');
+    const spinnerContainer = empresaCepInput.parentElement;
+    const invalidFeedback = spinnerContainer.querySelector('.invalid-feedback');
 
-        if (cepValue.length !== 8) {
-            empresaCepInput.classList.add('is-invalid');
-            invalidFeedback.textContent = 'CEP deve conter 8 dígitos.';
-            return;
-        }
-        empresaCepInput.classList.remove('is-invalid');
-        spinnerContainer.classList.add('loading');
-
-        try {
-            const response = await fetch(`cep_proxy.php?cep=${cepValue}`);
-            const data = await response.json();
-            if (!response.ok || data.erro) { throw new Error(data.erro || 'CEP não encontrado.'); }
-            document.getElementById('logradouro').value = data.street || data.logradouro || '';
-            document.getElementById('bairro').value = data.neighborhood || data.bairro || '';
-            document.getElementById('cidade').value = data.city || data.localidade || '';
-            document.getElementById('uf').value = data.state || data.uf || '';
-            document.getElementById('numero').focus(); // Foca no campo de número após preencher
-        } catch (error) {
-            console.error('Falha ao buscar CEP da empresa:', error);
-            empresaCepInput.classList.add('is-invalid');
-            invalidFeedback.textContent = error.message;
-        } finally {
-            spinnerContainer.classList.remove('loading');
-        }
+    if (cepValue.length !== 8) {
+        empresaCepInput.classList.add('is-invalid');
+        invalidFeedback.textContent = 'CEP deve conter 8 dígitos.';
+        return;
     }
-    
-    async function fetchCNPJData() {
-        const cnpjValue = cnpjInput.value.replace(/\D/g, '');
-        if (cnpjValue.length !== 14) { cnpjInput.classList.add('is-invalid'); return; }
-        cnpjInput.classList.remove('is-invalid');
-        cnpjContainer.classList.add('loading');
+    empresaCepInput.classList.remove('is-invalid');
+    spinnerContainer.classList.add('loading');
 
-        try {
-            const response = await fetch(`cnpj_proxy_public.php?cnpj=${cnpjValue}`);
-            if (!response.ok) { const errorText = await response.text(); throw new Error(`Erro na API: ${response.status} ${errorText}`); }
-            const data = await response.json();
-            if (data.type === "service_error") { throw new Error(data.message || 'Serviço de consulta de CNPJ indisponível.'); }
+    try {
+        const response = await fetch(`cep_proxy.php?cep=${cepValue}`);
+        const responseText = await response.text();
+        const data = JSON.parse(responseText);
 
-            const fieldMapping = {
-                'razao_social': 'razao_social', 'nome_fantasia': 'nome_fantasia',
-                'data_inicio_atividade': 'data_constituicao',
-                'logradouro': 'logradouro', 'numero': 'numero', 'bairro': 'bairro',
-                'municipio': 'cidade', 'uf': 'uf', 'cep': 'cep',
-                'cnae_fiscal': 'cnae_fiscal', 'cnae_fiscal_descricao': 'cnae_fiscal_descricao',
-                'email': 'email', 'ddd_telefone_1': 'ddd_telefone_1',
-                'descricao_identificador_matriz_filial': 'identificador_matriz_filial',
-                'descricao_situacao_cadastral': 'situacao_cadastral',
-                'descricao_motivo_situacao_cadastral': 'descricao_motivo_situacao_cadastral',
-                'porte': 'porte', 'natureza_juridica': 'natureza_juridica'
-            };
-
-            for (const apiKey in fieldMapping) {
-                const element = document.getElementById(fieldMapping[apiKey]);
-                if (element && data[apiKey] !== undefined) {
-                    if (element.id === 'data_constituicao' && data[apiKey]) {
-                        const [year, month, day] = data[apiKey].split('-');
-                        element.value = `${day}/${month}/${year}`;
-                    } else if (element.id === 'nome_fantasia' || element.id === 'cep' || element.id === 'numero' || element.id.startsWith('ddd_telefone_')) {
-                        // Não sobrescreve se já tiver valor, pois são editáveis
-                        if (!element.value) element.value = data[apiKey];
-                    } else {
-                        element.value = data[apiKey];
-                    }
-                }
-            }
-
-            if (empresaCepInput.value) {
-                empresaCepInput.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            if (document.getElementById('ddd_telefone_1').value) {
-                document.getElementById('ddd_telefone_1').dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            
-            const opcaoSimplesInput = document.getElementById('opcao_pelo_simples');
-            if (data.opcao_pelo_simples === true) {
-                opcaoSimplesInput.value = 'SIM';
-            } else if (data.opcao_pelo_simples === false) {
-                opcaoSimplesInput.value = 'NÃO';
-            } else {
-                opcaoSimplesInput.value = 'NÃO OPTANTE / OUTROS';
-            }
-
-            const repLegalInput = document.getElementById('representante_legal');
-            let repLegalName = ''; // Inicia como string vazia para mostrar o placeholder
-            if (data.qsa && data.qsa.length > 0) {
-                const repLegal = data.qsa.find(socio => socio.qualificacao_socio.toUpperCase().includes('ADMINISTRADOR'));
-                if (repLegal) {
-                    repLegalName = repLegal.nome_socio;
-                }
-            }
-            repLegalInput.value = repLegalName; // Se não encontrar, o valor será vazio e o placeholder aparecerá
-
-            cnaeContainer.innerHTML = '';
-            if (data.cnaes_secundarios && data.cnaes_secundarios.length > 0) {
-                data.cnaes_secundarios.forEach((cnae, index) => createCnaeCard(index, cnae));
-            }
-
-            uboContainer.innerHTML = '';
-            if (data.qsa && data.qsa.length > 0) {
-                data.qsa.forEach((socio, index) => createUboCard(index, socio));
-            } else {
-                createUboCard(0);
-            }
-
-        } catch (error) {
-            console.error('Falha ao buscar dados do CNPJ:', error);
-            cnpjInput.classList.add('is-invalid');
-            cnpjContainer.querySelector('.invalid-feedback').textContent = error.message;
-        } finally {
-            cnpjContainer.classList.remove('loading');
+        if (!response.ok || data.erro) {
+            throw new Error(data.erro || 'CEP não encontrado ou serviço indisponível.');
         }
+        
+        document.getElementById('logradouro').value = data.street || data.logradouro || '';
+        document.getElementById('bairro').value = data.neighborhood || data.bairro || '';
+        document.getElementById('cidade').value = data.city || data.localidade || '';
+        document.getElementById('uf').value = data.state || data.uf || '';
+        document.getElementById('numero').focus();
+    } catch (error) {
+        empresaCepInput.classList.add('is-invalid');
+        invalidFeedback.textContent = error.message;
+    } finally {
+        spinnerContainer.classList.remove('loading');
     }
+}
 
-    async function fetchSocioCEPData(cepInput) {
-        const cepValue = cepInput.value.replace(/\D/g, '');
-        const uboCard = cepInput.closest('.ubo-card');
-        const spinnerContainer = cepInput.parentElement;
-        const invalidFeedback = spinnerContainer.querySelector('.invalid-feedback');
-
-        if (cepValue.length !== 8) {
-            cepInput.classList.add('is-invalid');
-            invalidFeedback.textContent = 'CEP deve conter 8 dígitos.';
-            return;
-        }
-        cepInput.classList.remove('is-invalid');
-        spinnerContainer.classList.add('loading');
-
-        try {
-            const response = await fetch(`cep_proxy.php?cep=${cepValue}`);
-            const data = await response.json();
-            if (!response.ok || data.erro) { throw new Error(data.erro || 'CEP não encontrado.'); }
-            uboCard.querySelector('.socio-logradouro').value = data.street || data.logradouro || '';
-            uboCard.querySelector('.socio-bairro').value = data.neighborhood || data.bairro || '';
-            uboCard.querySelector('.socio-cidade').value = data.city || data.localidade || '';
-            uboCard.querySelector('.socio-uf').value = data.state || data.uf || '';
-            uboCard.querySelector('.socio-numero').focus();
-        } catch (error) {
-            console.error('Falha ao buscar CEP do sócio:', error);
-            cepInput.classList.add('is-invalid');
-            invalidFeedback.textContent = error.message;
-        } finally {
-            spinnerContainer.classList.remove('loading');
-        }
+async function fetchCNPJData() {
+    const cnpjValue = cnpjInput.value.replace(/\D/g, '');
+    if (cnpjValue.length !== 14) {
+        cnpjInput.classList.add('is-invalid'); 
+        return; 
     }
+    cnpjInput.classList.remove('is-invalid');
+    cnpjContainer.classList.add('loading');
+
+    try {
+        const response = await fetch(`cnpj_proxy_public.php?cnpj=${cnpjValue}`);
+        const responseText = await response.text();
+        const data = JSON.parse(responseText); 
+
+        if (!response.ok || data.type === "service_error") {
+             throw new Error(data.message || `Serviço de consulta indisponível (Erro: ${response.status})`);
+        }
+
+        const fieldMapping = { 'razao_social': 'razao_social', 'nome_fantasia': 'nome_fantasia', 'data_inicio_atividade': 'data_constituicao', 'logradouro': 'logradouro', 'numero': 'numero', 'bairro': 'bairro', 'municipio': 'cidade', 'uf': 'uf', 'cep': 'cep', 'cnae_fiscal': 'cnae_fiscal', 'cnae_fiscal_descricao': 'cnae_fiscal_descricao', 'email': 'email', 'ddd_telefone_1': 'ddd_telefone_1', 'descricao_identificador_matriz_filial': 'identificador_matriz_filial', 'descricao_situacao_cadastral': 'situacao_cadastral', 'descricao_motivo_situacao_cadastral': 'descricao_motivo_situacao_cadastral', 'porte': 'porte', 'natureza_juridica': 'natureza_juridica' };
+        for (const apiKey in fieldMapping) {
+            const element = document.getElementById(fieldMapping[apiKey]);
+            if (element && data[apiKey] !== undefined) {
+                if (element.id === 'data_constituicao' && data[apiKey]) { const [year, month, day] = data[apiKey].split('-'); element.value = `${day}/${month}/${year}`; } else if (element.id === 'nome_fantasia' || element.id === 'cep' || element.id === 'numero' || element.id.startsWith('ddd_telefone_')) { if (!element.value) element.value = data[apiKey]; } else { element.value = data[apiKey]; }
+            }
+        }
+        if (empresaCepInput.value) { empresaCepInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (document.getElementById('ddd_telefone_1').value) { document.getElementById('ddd_telefone_1').dispatchEvent(new Event('input', { bubbles: true })); }
+        const opcaoSimplesInput = document.getElementById('opcao_pelo_simples');
+        if (data.opcao_pelo_simples === true) { opcaoSimplesInput.value = 'SIM'; } else if (data.opcao_pelo_simples === false) { opcaoSimplesInput.value = 'NÃO'; } else { opcaoSimplesInput.value = 'NÃO OPTANTE / OUTROS'; }
+        const repLegalInput = document.getElementById('representante_legal');
+        let repLegalName = ''; if (data.qsa && data.qsa.length > 0) { const repLegal = data.qsa.find(socio => socio.qualificacao_socio.toUpperCase().includes('ADMINISTRADOR')); if (repLegal) { repLegalName = repLegal.nome_socio; } }
+        repLegalInput.value = repLegalName;
+
+        cnaeContainer.innerHTML = '';
+        if (data.cnaes_secundarios && data.cnaes_secundarios.length > 0) {
+            data.cnaes_secundarios.forEach((cnae, index) => createCnaeCard(index, cnae));
+        }
+
+        uboContainer.innerHTML = '';
+        if (data.qsa && data.qsa.length > 0) {
+            data.qsa.forEach((socio, index) => createUboCard(index, socio));
+        } else {
+            createUboCard(0);
+        }
+
+    } catch (error) {
+        cnpjInput.classList.add('is-invalid');
+        cnpjContainer.querySelector('.invalid-feedback').textContent = error.message;
+    } finally {
+        cnpjContainer.classList.remove('loading');
+    }
+}
+
+async function fetchSocioCEPData(cepInput) {
+    const cepValue = cepInput.value.replace(/\D/g, '');
+    const uboCard = cepInput.closest('.ubo-card');
+    const spinnerContainer = cepInput.parentElement;
+    const invalidFeedback = spinnerContainer.querySelector('.invalid-feedback');
+
+    if (cepValue.length !== 8) {
+        cepInput.classList.add('is-invalid');
+        invalidFeedback.textContent = 'CEP deve conter 8 dígitos.';
+        return;
+    }
+    cepInput.classList.remove('is-invalid');
+    spinnerContainer.classList.add('loading');
+
+    try {
+        const response = await fetch(`cep_proxy.php?cep=${cepValue}`);
+        const responseText = await response.text();
+        const data = JSON.parse(responseText);
+
+        if (!response.ok || data.erro) { 
+            throw new Error(data.erro || 'CEP não encontrado ou serviço indisponível.');
+        }
+        uboCard.querySelector('.socio-logradouro').value = data.street || data.logradouro || '';
+        uboCard.querySelector('.socio-bairro').value = data.neighborhood || data.bairro || '';
+        uboCard.querySelector('.socio-cidade').value = data.city || data.localidade || '';
+        uboCard.querySelector('.socio-uf').value = data.state || data.uf || '';
+        uboCard.querySelector('.socio-numero').focus();
+    } catch (error) {
+        cepInput.classList.add('is-invalid');
+        invalidFeedback.textContent = error.message;
+    } finally {
+        spinnerContainer.classList.remove('loading');
+    }
+}
+
         
     // --- GESTÃO DINÂMICA DE ELEMENTOS ---
     function createCnaeCard(id, data = {}) {
@@ -1079,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const checkboxGroup = form.querySelector('[data-required-group="perfil[fonte_fundos][]"]');
         if (checkboxGroup) {
             const checkedCheckboxes = checkboxGroup.querySelectorAll('input[type="checkbox"]:checked');
-            if (checkedCheckboxes.length === 0) {
+            if (checkedCheckes.length === 0) {
                 checkboxGroup.classList.add('is-invalid');
                 if (!firstInvalidElement) {
                     firstInvalidElement = checkboxGroup.querySelector('input[type="checkbox"]');

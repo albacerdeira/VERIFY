@@ -9,11 +9,13 @@ $slug_parceiro = null;
 // Verifica se o cliente estava logado e se o PDO está disponível.
 if (isset($_SESSION['cliente_id']) && isset($pdo)) {
     try {
-        // Busca o slug do parceiro associado a este cliente.
+        // --- CORREÇÃO AQUI ---
+        // Busca o slug do parceiro associado a este cliente
+        // Usando c.id_empresa_master = cw.empresa_id
         $stmt = $pdo->prepare(
-            'SELECT cw.slug FROM kyc_clientes kc ' .
-            'JOIN configuracoes_whitelabel cw ON kc.whitelabel_parceiro_id = cw.id ' .
-            'WHERE kc.id = ?'
+            'SELECT cw.slug FROM kyc_clientes c ' .
+            'JOIN configuracoes_whitelabel cw ON c.id_empresa_master = cw.empresa_id ' .
+            'WHERE c.id = ?'
         );
         $stmt->execute([$_SESSION['cliente_id']]);
         $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -54,13 +56,5 @@ if ($slug_parceiro) {
 
 // Redireciona para a página de login apropriada.
 header("Location: " . $login_url);
-exit;
-?>
-
-<?php
-session_start();
-session_unset();
-session_destroy();
-header('Location: cliente_login.php');
 exit;
 ?>

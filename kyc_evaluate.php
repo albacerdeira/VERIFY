@@ -33,7 +33,17 @@ if (!$permitido) {
 }
 
 // --- Carregamento Completo dos Dados (se a permissão foi concedida) ---
-$stmt_caso = $pdo->prepare("SELECT e.*, a.*, e.id AS kyc_id_real, e.status AS status_caso FROM kyc_empresas e LEFT JOIN kyc_avaliacoes a ON e.id = a.kyc_empresa_id WHERE e.id = :id");
+$stmt_caso = $pdo->prepare("
+    SELECT 
+        e.*, a.*, 
+        c.nome_completo AS nome_cliente, c.cpf AS cpf_cliente, c.email AS email_cliente, 
+        c.created_at AS cliente_criado_em, c.updated_at AS cliente_atualizado_em, c.selfie_path AS selfie_cliente, 
+        e.id AS kyc_id_real, e.status AS status_caso 
+    FROM kyc_empresas e 
+    LEFT JOIN kyc_avaliacoes a ON e.id = a.kyc_empresa_id 
+    LEFT JOIN kyc_clientes c ON e.cliente_id = c.id 
+    WHERE e.id = :id
+");
 $stmt_caso->execute(['id' => $kyc_id]);
 $caso = $stmt_caso->fetch(PDO::FETCH_ASSOC);
 
@@ -160,7 +170,7 @@ if (!empty($cpfs_limpos_unicos)) {
 }
 // --- FIM DA VERIFICAÇÃO CEIS/CNEP (PF) ---
 
-// --- CORREÇÃO: VERIFICAÇÃO PEP (PF - Sócios) usando LIKE ---
+// --- VERIFICAÇÃO PEP (PF - Sócios) usando LIKE ---
 $peps_confirmados_pf = [];
 $pep_match_found_pf = false;
 $pep_cpfs_found_full = []; // Armazena os CPFs completos encontrados como PEP
@@ -423,8 +433,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // --- CARREGAMENTO DE DADOS (GET) ---
 
 // Carrega dados relacionados
-// IMPORTANTE: Esta consulta é FEITA DEPOIS da lógica de atualização da flag PEP.
-// Assim, $socio['is_pep'] já virá atualizado do banco.
 $socios = $pdo->prepare("
     SELECT 
         id, empresa_id, nome_completo, data_nascimento, cpf_cnpj, qualificacao_cargo, 
@@ -619,13 +627,58 @@ function render_checklist_icon($name, $label, $is_checked) {
                         <span class="badge bg-secondary-soft text-secondary"><?= htmlspecialchars($caso['status_caso']); ?></span>
                     </div>
                     <div class="card-body">
-                        <p class="lead text-muted mb-4">Cliente: <?= htmlspecialchars($caso['razao_social']); ?></p>
+                        <p class="lead text-muted mb-4">Empresa: <?= htmlspecialchars($caso['razao_social']); ?></p>
                         
                         <?php require 'kyc_evaluate_accordion.php'; ?>
                     
                     </div>
                 </div>
-            </div>
+
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header"><h5 class="mb-0">Ficha do Cliente (Usuário)</h5></div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-1">Data de Submissão (Empresa)</p>
+                        <h6 class="mt-0 mb-3"><?= !empty($caso['data_submissao']) ? date('d/m/Y H:i:s', strtotime($caso['data_submissao'])) : '<span class="text-muted fst-italic">Não informado</span>' ?></h6>
+                        
+                        <div class="row">
+                            <div class="col-md-7">
+                                <?= display_field('Nome Completo', $caso['nome_cliente'] ?? null) ?>
+                                <?= display_field('CPF', $caso['cpf_cliente'] ?? null) ?>
+                                <?= display_field('E-mail de Login', $caso['email_cliente'] ?? null) ?>
+                                <?= display_field('Cliente Criado em', $caso['cliente_criado_em'] ?? null, true) ?>
+                                <?= display_field('Última Atualização (Cliente)', $caso['cliente_atualizado_em'] ?? null, true) ?>
+                            </div>
+                            <div class="col-md-5">
+                                <p class="text-muted small mb-1">Selfie de Cadastro</p>
+                                <?php
+                                if (!empty($caso['selfie_cliente'])) {
+                                    $path_servidor = htmlspecialchars($caso['selfie_cliente']); // ex: "uploads/selfies/foto.jpg"
+                                    
+                                    // --- CORREÇÃO DE CACHE BUSTING E PATH ---
+                                    // 1. Gera o cache-buster
+                                    $cache_buster = file_exists($path_servidor) ? '?v=' . filemtime($path_servidor) : '';
+                                    // 2. Cria o path web absoluto (com / no início) e adiciona o cache-buster
+                                    $path_web = '/' . ltrim($path_servidor, '/') . $cache_buster;
+
+                                    if (file_exists($path_servidor)): ?>
+                                        <a href="<?= $path_web ?>" target="_blank" title="Clique para ampliar">
+                                            <img src="<?= $path_web ?>" alt="Selfie do Cliente" class="img-fluid rounded border" style="max-height: 180px; width: 100%; object-fit: cover;">
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="border rounded bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
+                                            <span class="text-muted fst-italic text-center">Arquivo da selfie não<br>encontrado no servidor</span>
+                                        </div>
+                                    <?php endif; 
+                                } else { ?>
+                                    <div class="border rounded bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
+                                        <span class="text-muted fst-italic text-center">Selfie não<br>enviada</span>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
 
             <div class="col-lg-5" style="position: sticky; top: 20px;">
                 
@@ -849,7 +902,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const cnepIconPJ = cnepMatchFoundPJ ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
         const cnepIconPF = cnepMatchFoundPF ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
 
-        let html = `<h6 class="mb-3" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Sanções e Listas Públicas</h6>
+        let html = `<h6 class="mb-3" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Sanções e Listas</h6>
+                    <p class="text-muted">Checkagem automática</p>
                     <div class="row">
                         <div class="col-lg-6">
                             <div class="checklist-item">

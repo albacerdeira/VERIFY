@@ -1,5 +1,41 @@
 <?php
 // Todas as variáveis já foram preparadas pelo bootstrap.php
+
+// --- INÍCIO DA CORREÇÃO WHITELABEL ---
+// O bootstrap.php define os padrões (ex: 'Verify KYC'), mas precisamos
+// sobrepor com a configuração específica do admin/analista logado.
+if ($is_logged_in && isset($_SESSION['user_empresa_id']) && isset($pdo)) {
+    try {
+        // Busca a configuração whitelabel vinculada ao 'empresa_id' do usuário logado
+        $stmt_wl_admin = $pdo->prepare("SELECT logo_url, cor_variavel FROM configuracoes_whitelabel WHERE empresa_id = ?");
+        $stmt_wl_admin->execute([$_SESSION['user_empresa_id']]);
+        $config_wl_admin = $stmt_wl_admin->fetch(PDO::FETCH_ASSOC);
+        
+        if ($config_wl_admin) {
+            // Sobrepõe as variáveis padrão vindas do bootstrap
+            if (!empty($config_wl_admin['logo_url'])) {
+                $logo_url = $config_wl_admin['logo_url'];
+            }
+            if (!empty($config_wl_admin['cor_variavel'])) {
+                $cor_variavel = $config_wl_admin['cor_variavel'];
+            }
+        }
+    } catch (PDOException $e) {
+        // Ignora se der erro, apenas usa o padrão
+        error_log("Erro ao buscar whitelabel do admin no header.php: " . $e->getMessage());
+    }
+}
+// --- FIM DA CORREÇÃO WHITELABEL ---
+
+
+// --- CORREÇÃO DE CACHE-BUSTING PARA O LOGO ---
+// Garante que o path_prefix (definido no bootstrap) seja aplicado
+// Usamos ltrim() para garantir que não tenhamos barras duplas (//)
+$logo_path_servidor = $path_prefix . ltrim(htmlspecialchars($logo_url), '/');
+$logo_cache_buster = file_exists($logo_path_servidor) ? '?v=' . filemtime($logo_path_servidor) : '';
+$logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo_cache_buster;
+// --- FIM DA CORREÇÃO ---
+
 ?>
 <!DOCTYPE html>
 <html lang='pt-BR'>
@@ -11,28 +47,24 @@
     <link href='https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' rel='stylesheet'>
     <link rel='stylesheet' href='<?= $path_prefix ?>style.css'>
     
-    <!-- Google Tag Manager (Global - Dono da Aplicação) -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
     j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-KXR83VZ6');</script>
-    <!-- End Google Tag Manager (Global) -->
-    
     <?php if (!empty($_SESSION['google_tag_manager_id'])): 
         $gtm_id_cliente = htmlspecialchars($_SESSION['google_tag_manager_id']);
     ?>
-        <!-- Google Tag Manager (Cliente) -->
         <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
         new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
         j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
         })(window,document,'script','dataLayer','<?= $gtm_id_cliente ?>');</script>
-        <!-- End Google Tag Manager (Cliente) -->
-    <?php endif; ?>
+        <?php endif; ?>
 
     <style>
-        :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; }
+        /* A cor primária agora é definida corretamente com base no login do admin */
+        :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; } 
         .main-header .main-nav a.active {
             background-color: #ffffff;
             color: var(--primary-color);
@@ -41,54 +73,70 @@
             padding: 5px 10px;
         }
     </style>
-    <!-- Bootstrap JS Bundle (inclui Popper) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
-    <!-- Google Tag Manager (noscript) (Global - Dono da Aplicação) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KXR83VZ6"
     height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>
-    <!-- End Google Tag Manager (noscript) (Global) -->
-    
     <?php if (!empty($_SESSION['google_tag_manager_id'])): 
         $gtm_id_cliente = htmlspecialchars($_SESSION['google_tag_manager_id']);
     ?>
-        <!-- Google Tag Manager (noscript) (Cliente) -->
         <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=<?= $gtm_id_cliente ?>"
         height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager Cliente"></iframe></noscript>
-        <!-- End Google Tag Manager (noscript) (Cliente) -->
-    <?php endif; ?>
+        <?php endif; ?>
 
-    <?php if ($is_logged_in): // Layout para usuários logados (ADMIN) ?>
+    <?php if ($is_logged_in): // Layout para usuários logados ?>
     <div class='page-container'>
         <header class='main-header'>
             <div class='header-top'>
-                 <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $path_prefix . htmlspecialchars($logo_url) ?>' alt='Logo da Empresa' class='company-logo'></a>
+                 <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='company-logo'></a>
                  <div class='user-info'>
                     <span>Olá, <?= htmlspecialchars($user_nome) ?> (<?= htmlspecialchars(ucfirst($user_role)) ?>)</span>
                 </div>
             </div>
-            <nav class='main-nav'>
-                <?php if (!$is_analista): ?>
-                 <a href='<?= $path_prefix ?>dashboard.php' class='<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>'>Dashboard</a>
-                 <a href='<?= $path_prefix ?>consultas.php' class='<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>'>Histórico</a>
-                <?php endif; ?>
-                 <a href='<?= $path_prefix ?>kyc_form.php' class='<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>'>Enviar KYC</a>
-                
-                <?php if ($is_superadmin || $is_admin || $is_analista): ?>
-                    <a href='<?= $path_prefix ?>kyc_list.php' class='<?= (in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php'])) ? 'active' : '' ?>'>Análise KYC</a>
-                <?php endif; ?>
+            <nav class="main-nav">
+                <?php // --- INÍCIO DA NOVA LÓGICA DE MENU ---
 
-                <?php if ($is_superadmin || $is_admin): ?>
-                    <a href='<?= $path_prefix ?>usuarios.php' class='<?= ($current_page_base == 'usuarios.php') ? 'active' : '' ?>'>Usuários</a>
-                    <a href='<?= $path_prefix ?>configuracoes.php' class='<?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>'>Configurações</a>
-                <?php endif; ?>
+                // Menu do Superadmin
+                if ($is_superadmin): ?>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
+                    <a href="<?= $path_prefix ?>empresas.php" class="<?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">Empresas</a>
+                    <a href="<?= $path_prefix ?>usuarios.php" class="<?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">Usuários</a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
+                    <a href="<?= $path_prefix ?>configuracoes.php" class="<?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">Configurações</a>
+                    <a href="<?= $path_prefix ?>admin_import.php" class="<?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">Importar Listas</a>
+
+                <?php // Menu do Admin
+                elseif ($is_admin): ?>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
+                    <a href="<?= $path_prefix ?>usuarios.php" class="<?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">Usuários</a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
+                    <a href="<?= $path_prefix ?>configuracoes.php" class="<?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">Configurações</a>
                 
-                <?php if ($is_superadmin): ?>
-                    <a href='<?= $path_prefix ?>empresas.php' class='<?= ($current_page_base == 'empresas.php') ? 'active' : '' ?>'>Empresas</a>
-                <?php endif; ?>
-                
-                <a href='<?= $path_prefix ?>logout.php'>Sair</a>
+
+                <?php // Menu do Analista
+                elseif ($is_analista): ?>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
+
+                <?php // Menu Padrão (outros usuários logados)
+                else: ?>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
+                <?php endif; 
+
+                // Link de Sair aparece para todos os usuários logados ?>
+                <a href="<?= $path_prefix ?>logout.php" class="logout-link">Sair</a>
+                <?php // --- FIM DA NOVA LÓGICA DE MENU --- ?>
             </nav>
         </header>
         <main class='main-content'>
@@ -99,7 +147,7 @@
             <nav class='navbar navbar-expand-lg navbar-light bg-white border-bottom'>
                 <div class="container">
                     <a class='navbar-brand' href="cliente_login.php">
-                        <img src='<?= $path_prefix . htmlspecialchars($logo_url) ?>' alt='Logo' style='height: 40px;'>
+                         <img src='<?= $logo_url_final ?>' alt='Logo' style='height: 40px;'>
                     </a>
                     <div class="collapse navbar-collapse justify-content-end">
                         <ul class="navbar-nav">

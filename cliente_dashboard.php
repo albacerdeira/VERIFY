@@ -15,8 +15,51 @@ if (!isset($_SESSION['cliente_id'])) {
 // ==================================
 $nome_cliente = $_SESSION['cliente_nome'] ?? 'Cliente';
 $cliente_id = $_SESSION['cliente_id'];
+$cliente_email = $_SESSION['cliente_email'] ?? ''; // Garante que a variável exista
 
-// 3. LÓGICA WHITELABEL PERSISTENTE E APRIMORADA
+// --- LÓGICA CORRIGIDA PARA BUSCAR STATUS DO KYC USANDO cliente_id ---
+$kyc_status = null;
+$error = null;
+
+if (isset($pdo)) {
+    try {
+        // Busca o status da última submissão do cliente usando o ID do cliente.
+        $stmt_status = $pdo->prepare(
+            'SELECT status FROM kyc_empresas WHERE cliente_id = ? ORDER BY data_atualizacao DESC LIMIT 1'
+        );
+        $stmt_status->execute([$cliente_id]);
+        $submission = $stmt_status->fetch(PDO::FETCH_ASSOC);
+
+        if ($submission) {
+            // Mapeia o status do banco para um texto mais amigável
+            switch ($submission['status']) {
+                case 'em_preenchimento':
+                    $kyc_status = 'Em Preenchimento';
+                    break;
+                case 'enviado':
+                    $kyc_status = 'Em Análise';
+                    break;
+                case 'aprovado':
+                    $kyc_status = 'Aprovado';
+                    break;
+                case 'reprovado':
+                    $kyc_status = 'Em Análise';/* reprovado */
+                    break;
+                default:
+                    $kyc_status = ucfirst(str_replace('_', ' ', $submission['status']));
+                    break;
+            }
+        }
+
+    } catch (PDOException $e) {
+        $error = "Não foi possível carregar o status do seu cadastro. Por favor, tente novamente mais tarde.";
+        error_log("Erro ao buscar status do KYC para cliente ID {$cliente_id}: " . $e->getMessage());
+    }
+}
+// --- FIM DA LÓGICA DE STATUS ---
+
+
+// 3. LÓGICA WHITELABEL PERSISTENTE E CORRIGIDA
 // ==============================================
 
 // Define a identidade visual padrão da plataforma.
@@ -33,10 +76,12 @@ $slug_contexto = null; // Inicia sem slug.
 if (isset($pdo)) {
     try {
         // PASSO 1: Tenta encontrar um parceiro associado PERMANENTEMENTE ao cliente.
+        // --- CORREÇÃO AQUI ---
+        // Junta kc.id_empresa_master com cw.empresa_id
         $stmt_parceiro = $pdo->prepare(
             'SELECT cw.nome_empresa, cw.cor_variavel, cw.logo_url, cw.slug '
             . 'FROM kyc_clientes kc ' 
-            . 'JOIN configuracoes_whitelabel cw ON kc.whitelabel_parceiro_id = cw.id ' 
+            . 'JOIN configuracoes_whitelabel cw ON kc.id_empresa_master = cw.empresa_id ' 
             . 'WHERE kc.id = ?'
         );
         $stmt_parceiro->execute([$cliente_id]);
@@ -78,6 +123,12 @@ if (isset($pdo)) {
 
 // Título da página.
 $page_title = 'Painel do Cliente - ' . htmlspecialchars($nome_empresa);
+
+// --- CORREÇÃO DE CACHE-BUSTING PARA O LOGO ---
+$logo_path_servidor = ltrim(htmlspecialchars($logo_url), '/');
+$logo_cache_buster = file_exists($logo_path_servidor) ? '?v=' . filemtime($logo_path_servidor) : '';
+$logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
+// --- FIM DA CORREÇÃO ---
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -86,6 +137,7 @@ $page_title = 'Painel do Cliente - ' . htmlspecialchars($nome_empresa);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $page_title ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
             --primary-color: <?= htmlspecialchars($cor_variavel) ?>;
@@ -102,15 +154,39 @@ $page_title = 'Painel do Cliente - ' . htmlspecialchars($nome_empresa);
         .card-header { font-weight: 600; background-color: #f8f9fa; padding: 1rem 1.5rem; }
         .card-body { padding: 1.5rem; }
         .card-title { font-weight: 600; color: #333; }
-        .btn-lg { padding: 0.8rem 1.5rem; font-size: 1.1rem; }
+        .btn-sm { padding: 0.8rem 1.5rem;  }
         .text-danger { color: #dc3545; }
+        .status-badge {
+            display: inline-block;
+            padding: 0.35em 0.65em;
+            font-size: .75em;
+            font-weight: 700;
+            line-height: 1;
+            background-color: #586fadff;/*enviado*/
+            color: #fff;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.375rem;
+        }
+        .status-aprovado {
+            background-color: #198754; /* Verde (Success) */
+        }
+        .status-em-análise,
+        .status-em-preenchimento {
+            background-color: #ffc107; /* Amarelo (Warning) */
+            color: #000;
+        }
+        .status-reprovado-com-pendências {
+            background-color: #dc3545; /* Vermelho (Danger) */
+        }
     </style>
 </head>
 <body>
 
     <header class="main-header">
         <div class="header-logo">
-            <img src="<?= htmlspecialchars($logo_url) ?>" alt="Logo de <?= htmlspecialchars($nome_empresa) ?>">
+            <img src="<?= $logo_url_final ?>" alt="Logo de <?= htmlspecialchars($nome_empresa) ?>">
         </div>
         <div class="header-user-menu">
             <span>Olá, <strong><?= htmlspecialchars(explode(' ', $nome_cliente)[0]) ?></strong>!</span>
@@ -125,21 +201,21 @@ $page_title = 'Painel do Cliente - ' . htmlspecialchars($nome_empresa);
                     <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
                 <?php else: ?>
                     <div class="card shadow-sm">
-                        <div class="card-header"><h5 class="mb-0">Status do seu Cadastro KYC</h5></div>
+                        <div class="card-header text-center"><h4 class="mb-0">Status do seu Cadastro KYC</h4></div>
                         <div class="card-body text-center p-4">
                             <?php if (!$kyc_status): ?>
-                                <h5 class="card-title">Nenhum cadastro iniciado</h5>
+                                <p class="card-title">Nenhum cadastro iniciado</p>
                                 <p class="text-muted">Você ainda não iniciou seu processo de cadastro. Clique no botão abaixo para começar.</p>
-                                <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-lg mt-3">Iniciar Cadastro KYC</a>
+                                <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-sm mt-3">Iniciar Cadastro KYC</a>
                             <?php else: ?>
-                                <h5 class="card-title">Seu status atual é: 
+                                <p class="card-title-centered">Seu status atual é: 
                                     <span class="status-badge status-<?= strtolower(str_replace(' ', '-', htmlspecialchars($kyc_status))) ?>">
                                         <?= htmlspecialchars($kyc_status) ?>
                                     </span>
-                                </h5>
+                                </p>
                                 <?php if ($kyc_status === 'Em Preenchimento'): ?>
                                     <p class="text-muted mt-3">Você já iniciou seu cadastro. Continue de onde parou.</p>
-                                    <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-lg mt-3">Continuar Preenchimento</a>
+                                    <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-sm mt-3">Continuar Preenchimento</a>
                                 <?php else: ?>
                                     <p class="text-muted mt-3">Nossa equipe está analisando suas informações. Qualquer novidade, entraremos em contato por e-mail.</p>
                                 <?php endif; ?>
@@ -148,4 +224,4 @@ $page_title = 'Painel do Cliente - ' . htmlspecialchars($nome_empresa);
                     </div>
                 <?php endif; ?>
             </div>
-        </div
+        </div>

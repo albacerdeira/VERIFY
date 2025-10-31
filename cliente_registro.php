@@ -8,7 +8,13 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// --- VERIFICAÇÃO DE ARQUIVO DE CONFIGURAÇÃO ---
+if (!file_exists('config.php')) {
+    die("Erro 500: O arquivo de configuração principal (config.php) não foi encontrado. O script não pode continuar.");
+}
 require_once 'config.php';
+// --- FIM DA VERIFICAÇÃO ---
+
 require_once 'PHPMailer/Exception.php';
 require_once 'PHPMailer/PHPMailer.php';
 require_once 'PHPMailer/SMTP.php';
@@ -68,7 +74,9 @@ function enviarEmailVerificacao($email_cliente, $nome_cliente, $verify_url, $nom
 $error = '';
 $success = '';
 $slug_contexto = $_GET['cliente'] ?? null;
-$id_parceiro = null; // ID do parceiro whitelabel
+
+// --- CORREÇÃO: Variável agora é id_empresa_master ---
+$id_empresa_master_contexto = null; // ID da empresa dona do whitelabel
 
 // Lógica Whitelabel inicial (para visualização da página)
 $nome_empresa = 'Verify KYC';
@@ -77,24 +85,31 @@ $logo_url = 'imagens/verify-kyc.png';
 
 if ($slug_contexto && isset($pdo)) {
     try {
-        $stmt_wl = $pdo->prepare("SELECT id, nome_empresa, cor_variavel, logo_url FROM configuracoes_whitelabel WHERE slug = ?");
+        // --- CORREÇÃO: Seleciona 'empresa_id' em vez de 'id' ---
+        $stmt_wl = $pdo->prepare("SELECT empresa_id, nome_empresa, cor_variavel, logo_url FROM configuracoes_whitelabel WHERE slug = ?");
         $stmt_wl->execute([$slug_contexto]);
         $config_wl = $stmt_wl->fetch(PDO::FETCH_ASSOC);
+        
         if ($config_wl) {
-            $id_parceiro = $config_wl['id']; // **PASSO CHAVE: Captura o ID do parceiro**
+            // --- CORREÇÃO: Armazena o 'empresa_id' para o INSERT ---
+            $id_empresa_master_contexto = $config_wl['empresa_id']; 
             $nome_empresa = $config_wl['nome_empresa'];
             $cor_variavel = $config_wl['cor_variavel'];
             $logo_url = $config_wl['logo_url'];
         }
     } catch(PDOException $e) {
-        error_log("Erro ao buscar whitelabel no registro: " . $e->getMessage());
+        // Se a tabela não existir, o PDO pode lançar uma exceção que causa erro 500
+        error_log("Erro 500 ao buscar whitelabel no registro: " . $e->getMessage());
+        // Define um erro amigável em vez de quebrar a página
+        $error = "Não foi possível carregar as configurações de parceiro. Verifique o link ou tente mais tarde.";
     }
 }
 
 // Processamento do Formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($pdo)) {
-        die("Falha na conexão com o banco de dados.");
+        // Esta verificação é crucial se o config.php falhar
+        die("Erro 500: Falha crítica na conexão com o banco de dados.");
     }
 
     $pdo->beginTransaction();
@@ -126,13 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (isset($_FILES['selfie_upload']) && $_FILES['selfie_upload']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['selfie_upload'];
 
-            // --- VALIDAÇÃO DO TIPO DE ARQUIVO NO BACKEND ---
             $allowed_types = ['image/jpeg', 'image/png', 'application/pdf'];
             $file_type = mime_content_type($file['tmp_name']);
             if (!in_array($file_type, $allowed_types)) {
                 throw new Exception('Tipo de arquivo inválido para a selfie. Apenas JPG, PNG e PDF são permitidos.');
             }
-            // --- FIM DA VALIDAÇÃO ---
 
             $upload_dir = 'uploads/selfies/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
@@ -157,12 +170,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $codigo_expira_em = (new DateTime('+24 hours'))->format('Y-m-d H:i:s');
         $hash_senha = password_hash($senha, PASSWORD_DEFAULT);
 
-        // **MODIFICAÇÃO PRINCIPAL: Inserção com o ID do parceiro whitelabel**
+        // --- CORREÇÃO: Alterado de 'whitelabel_parceiro_id' para 'id_empresa_master' ---
         $stmt_insert = $pdo->prepare(
-            "INSERT INTO kyc_clientes (nome_completo, cpf, email, password, selfie_path, codigo_verificacao, codigo_expira_em, email_verificado, status, whitelabel_parceiro_id) " .
+            "INSERT INTO kyc_clientes (nome_completo, cpf, email, password, selfie_path, codigo_verificacao, codigo_expira_em, email_verificado, status, id_empresa_master) " .
             "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pendente', ?)"
         );
-        $stmt_insert->execute([$nome, $cpf, $email, $hash_senha, $selfie_path, $codigo_verificacao, $codigo_expira_em, $id_parceiro]);
+        // --- CORREÇÃO: Passando a variável correta ---
+        $stmt_insert->execute([$nome, $cpf, $email, $hash_senha, $selfie_path, $codigo_verificacao, $codigo_expira_em, $id_empresa_master_contexto]);
         
         // Construção da URL de verificação com contexto whitelabel
         $verify_url = SITE_URL . "/cliente_verificacao.php?codigo=" . urlencode($codigo_verificacao);
@@ -179,11 +193,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Exception $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
         $error = "Erro no registro: " . $e->getMessage();
-        error_log("Falha no registro de cliente: " . $e->getMessage());
+        // Log detalhado para o admin
+        error_log("Falha no registro de cliente (cliente_registro.php): " . $e->getMessage() . " | SQL Params: " . json_encode([$nome ?? '', $cpf ?? '', $email ?? '', $selfie_path ?? '', $id_empresa_master_contexto ?? '']));
     }
 }
 
-$page_title = 'Crie sua Conta - ' . htmlspecialchars($nome_empresa);
+$page_title = 'Cadastro - ' . htmlspecialchars($nome_empresa);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -193,6 +208,7 @@ $page_title = 'Crie sua Conta - ' . htmlspecialchars($nome_empresa);
     <title><?= $page_title ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; }
         body { font-family: 'Poppins', sans-serif; background-color: #f4f7f9; }
@@ -203,14 +219,21 @@ $page_title = 'Crie sua Conta - ' . htmlspecialchars($nome_empresa);
         .btn-outline-primary:hover { background-color: var(--primary-color); border-color: var(--primary-color); color: white; }
         .link { color: var(--primary-color); text-decoration: none; font-weight: 500; }
         .link:hover { text-decoration: underline; }
-        .custom-file-input {
+        .custom-file-input { display: flex; align-items: center; }
+        .custom-file-input .file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .secure-badge {
             display: flex;
             align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: -5px;
+            margin-bottom: 20px;
         }
-        .custom-file-input .file-name {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .secure-badge .bi {
+            color: #198754; 
+            margin-right: 8px;
+            font-size: 1.1rem;
         }
     </style>
 </head>
@@ -218,7 +241,11 @@ $page_title = 'Crie sua Conta - ' . htmlspecialchars($nome_empresa);
     <div class="register-container card p-4 shadow-sm">
         <div class="text-center mb-4">
             <img src="<?= htmlspecialchars($logo_url) ?>" alt="<?= htmlspecialchars($nome_empresa) ?>" style="max-height: 60px; object-fit: contain;">
-            <h2 class="mt-3">Criar Conta</h2>
+            <h2 class="mt-3">Cadastro de Conta</h2>
+            <div class="secure-badge">
+                <i class="bi bi-shield-lock-fill"></i>
+                <span>Cadastro seguro</span>
+            </div>
         </div>
 
         <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
@@ -274,13 +301,13 @@ $page_title = 'Crie sua Conta - ' . htmlspecialchars($nome_empresa);
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary w-100">Criar Conta</button>
+            <button type="submit" class="btn btn-primary w-100">Criar conta de cadastro</button>
         </form>
         <?php endif; ?>
         
         <div class="text-center mt-4">
             <p class="text-muted">
-                Já tem uma conta? 
+                Já tem uma conta de cadastro? 
                 <a href="cliente_login.php<?= $slug_contexto ? "?cliente=" . htmlspecialchars($slug_contexto) : "" ?>" class="link">
                     Faça login aqui
                 </a>

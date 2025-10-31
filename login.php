@@ -29,14 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($superadmin && password_verify($password, $superadmin['password'])) {
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = $superadmin['id'];
-                $_SESSION['user_nome'] = $superadmin['nome'];
-                $_SESSION['user_role'] = 'superadmin'; // Role fixa para superadmin
-                $_SESSION['empresa_id'] = null; // Superadmin não pertence a uma empresa específica
+                $_SESSION['nome'] = $superadmin['nome']; // CORREÇÃO: Usar a chave 'nome'
+                $_SESSION['user_role'] = 'superadmin';
+                $_SESSION['empresa_id'] = null;
                 
-                // Para superadmin, as configurações de whitelabel podem ser genéricas ou não aplicáveis na sessão
                 $_SESSION['nome_empresa'] = 'Painel Superadmin';
-                $_SESSION['logo_url'] = 'uploads/logos/68df0c7e712ff-verify-kyc.png'; // Logo padrão
-                $_SESSION['cor_variavel'] = '#222b5a'; // Cor padrão
+                $_SESSION['logo_url'] = 'uploads/logos/68df0c7e712ff-verify-kyc.png';
+                $_SESSION['cor_variavel'] = '#222b5a';
 
                 header('Location: dashboard.php');
                 exit;
@@ -56,9 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($user && password_verify($password, $user['password'])) {
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_nome'] = $user['nome'];
+                $_SESSION['nome'] = $user['nome']; // CORREÇÃO: Usar a chave 'nome'
                 $_SESSION['user_role'] = $user['role'];
-                $_SESSION['empresa_id'] = $user['empresa_id']; // Garante que o empresa_id do usuário seja salvo
+                $_SESSION['empresa_id'] = $user['empresa_id'];
                 $_SESSION['nome_empresa'] = $user['nome_empresa'];
                 $_SESSION['logo_url'] = $user['logo_url'];
                 $_SESSION['cor_variavel'] = $user['cor_variavel'];
@@ -68,7 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 exit;
             }
 
-            // Se nenhuma das autenticações funcionar
             $error_message = "Credenciais inválidas.";
 
         } catch (PDOException $e) {
@@ -77,7 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 }
-// Inclui o cabeçalho específico da página de login, que não tem o menu principal.
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

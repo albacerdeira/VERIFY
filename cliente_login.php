@@ -43,17 +43,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Por favor, preencha todos os campos.');
         }
 
-        // PASSO 1: Buscar o cliente APENAS pelo e-mail. A lógica de portal não importa aqui.
-        $stmt = $pdo->prepare("SELECT id, nome_completo, password, email, email_verificado, status, whitelabel_parceiro_id FROM kyc_clientes WHERE email = ?");
+        // --- CORREÇÃO AQUI ---
+        // Troca 'whitelabel_parceiro_id' por 'id_empresa_master'
+        $stmt = $pdo->prepare("SELECT id, nome_completo, password, email_verificado, status, id_empresa_master FROM kyc_clientes WHERE email = ?");
         $stmt->execute([$email]);
         $cliente = $stmt->fetch();
 
-        // PASSO 2: Verificar a senha.
         if (!$cliente || !password_verify($senha, $cliente['password'])) {
             throw new Exception('Credenciais inválidas.');
         }
 
-        // PASSO 3: Verificar status da conta.
         if (!$cliente['email_verificado']) {
             throw new Exception('Sua conta ainda não foi verificada. Por favor, verifique seu e-mail.');
         }
@@ -61,17 +60,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Sua conta está com status \'' . htmlspecialchars($cliente['status']) . '\'. Contate o suporte.');
         }
 
-        // PASSO 4: Autenticação bem-sucedida. Configurar a sessão.
+        // Autenticação bem-sucedida. Configurar a sessão.
         $_SESSION['cliente_id'] = $cliente['id'];
         $_SESSION['cliente_nome'] = $cliente['nome_completo'];
-        $_SESSION['cliente_email'] = $cliente['email'];
         
-        // PASSO 5: Redirecionamento Inteligente para o Dashboard CORRETO.
+        // Redirecionamento Inteligente para o Dashboard CORRETO.
         $redirect_url = 'cliente_dashboard.php';
-        if (!empty($cliente['whitelabel_parceiro_id'])) {
-            // Se o cliente pertence a um parceiro, buscamos o slug para a URL.
-            $stmt_slug = $pdo->prepare("SELECT slug FROM configuracoes_whitelabel WHERE id = ?");
-            $stmt_slug->execute([$cliente['whitelabel_parceiro_id']]);
+        
+        // --- CORREÇÃO AQUI ---
+        // Verifica a coluna 'id_empresa_master' e faz o JOIN pela coluna 'empresa_id'
+        if (!empty($cliente['id_empresa_master'])) {
+            // Busca o slug na tabela 'configuracoes_whitelabel' usando o 'empresa_id'
+            $stmt_slug = $pdo->prepare("SELECT slug FROM configuracoes_whitelabel WHERE empresa_id = ?");
+            $stmt_slug->execute([$cliente['id_empresa_master']]);
             $parceiro = $stmt_slug->fetch();
 
             if ($parceiro && !empty($parceiro['slug'])) {
@@ -99,6 +100,7 @@ $page_title = 'Login - ' . htmlspecialchars($nome_empresa);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $page_title ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; }
         body { font-family: 'Poppins', sans-serif; background-color: #f4f7f9; margin: 0; padding: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -115,13 +117,17 @@ $page_title = 'Login - ' . htmlspecialchars($nome_empresa);
         .text-muted { color: #6b7280; font-size: 0.9rem; }
         .mt-4 { margin-top: 1.5rem; }
         .link { color: var(--primary-color); text-decoration: none; font-weight: 500; }
+        .secure-platform-badge { display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 0.85rem; margin-top: 1.5rem; }
+        .secure-platform-badge .bi { font-size: 1.1rem; margin-right: 0.5rem; color: #16a34a; }
     </style>
 </head>
 <body>
     <div class="login-container">
         <div class="login-header">
             <img src="<?= htmlspecialchars($logo_url) ?>" alt="Logo de <?= htmlspecialchars($nome_empresa) ?>">
-            <h2>Acesse sua Conta</h2>
+            <h2>Login de cadastro de cliente</h2>
+            <p> Insira suas credenciais </p>
+            </p>
         </div>
 
         <?php if ($error): ?>
@@ -150,12 +156,18 @@ $page_title = 'Login - ' . htmlspecialchars($nome_empresa);
 
         <div class="text-center mt-4">
             <p class="text-muted">
-                Não tem uma conta? 
+                Não tem uma conta de cadastro? 
                 <a href="cliente_registro.php<?= $slug_contexto ? "?cliente=" . htmlspecialchars($slug_contexto) : "" ?>" class="link">
                     Crie uma agora
                 </a>
             </p>
         </div>
+
+        <div class="secure-platform-badge">
+            <i class="bi bi-shield-lock-fill"></i>
+            <span>Plataforma segura</span>
+        </div>
+        
     </div>
 </body>
 </html>
