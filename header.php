@@ -45,7 +45,7 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
     <title><?= htmlspecialchars($page_title_final) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href='https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' rel='stylesheet'>
-    <link rel='stylesheet' href='<?= $path_prefix ?>style.css'>
+    <link rel='stylesheet' href='<?= $path_prefix ?>style.css?v=<?= time() ?>'>
     
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -65,12 +65,9 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
     <style>
         /* A cor primária agora é definida corretamente com base no login do admin */
         :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; } 
-        .main-header .main-nav a.active {
-            background-color: #ffffff;
-            color: var(--primary-color);
-            font-weight: 600;
-            border-radius: 5px;
-            padding: 5px 10px;
+        .sidebar-nav-link.active {
+            background-color: var(--primary-color);
+            color: #ffffff;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -87,58 +84,116 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
     <?php if ($is_logged_in): // Layout para usuários logados ?>
     <div class='page-container'>
-        <header class='main-header'>
-            <div class='header-top'>
-                 <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='company-logo'></a>
-                 <div class='user-info'>
-                    <span>Olá, <?= htmlspecialchars($user_nome) ?> (<?= htmlspecialchars(ucfirst($user_role)) ?>)</span>
-                </div>
+        <!-- Botão toggle para mobile -->
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle Sidebar">
+            <span></span><span></span><span></span>
+        </button>
+        
+        <!-- Overlay para fechar sidebar em mobile -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        
+        <!-- Sidebar -->
+        <aside class='sidebar' id='sidebar'>
+            <div class='sidebar-header'>
+                 <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='sidebar-logo'></a>
             </div>
-            <nav class="main-nav">
+            <div class='sidebar-user'>
+                <span class='sidebar-user-name'><?= htmlspecialchars($user_nome) ?></span>
+                <span class='sidebar-user-role'><?= htmlspecialchars(ucfirst($user_role)) ?></span>
+            </div>
+            <nav class="sidebar-nav">
                 <?php // --- INÍCIO DA NOVA LÓGICA DE MENU ---
 
                 // Menu do Superadmin
                 if ($is_superadmin): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
-                    <a href="<?= $path_prefix ?>empresas.php" class="<?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">Empresas</a>
-                    <a href="<?= $path_prefix ?>usuarios.php" class="<?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">Usuários</a>
-                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
-                    <a href="<?= $path_prefix ?>configuracoes.php" class="<?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">Configurações</a>
-                    <a href="<?= $path_prefix ?>admin_import.php" class="<?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">Importar Listas</a>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                        <i class="icon">📊</i> Dashboard
+                    </a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                        <i class="icon">📋</i> Histórico
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                        <i class="icon">📝</i> Enviar KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                        <i class="icon">🔍</i> Análise KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>empresas.php" class="sidebar-nav-link <?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">🏢</i> Empresas
+                    </a>
+                    <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">👥</i> Usuários
+                    </a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">👤</i> Clientes
+                    </a>
+                    <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
+                        <i class="icon">⚙️</i> Configurações
+                    </a>
+                    <a href="<?= $path_prefix ?>admin_import.php" class="sidebar-nav-link <?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">
+                        <i class="icon">📥</i> Importar Listas
+                    </a>
 
                 <?php // Menu do Admin
                 elseif ($is_admin): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
-                    <a href="<?= $path_prefix ?>usuarios.php" class="<?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">Usuários</a>
-                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
-                    <a href="<?= $path_prefix ?>configuracoes.php" class="<?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">Configurações</a>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                        <i class="icon">📊</i> Dashboard
+                    </a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                        <i class="icon">📋</i> Histórico
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                        <i class="icon">📝</i> Enviar KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                        <i class="icon">🔍</i> Análise KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">👥</i> Usuários
+                    </a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">👤</i> Clientes
+                    </a>
+                    <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
+                        <i class="icon">⚙️</i> Configurações
+                    </a>
                 
 
                 <?php // Menu do Analista
                 elseif ($is_analista): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="<?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">Análise KYC</a>
-                    <a href="<?= $path_prefix ?>clientes.php" class="<?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">Clientes</a>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                        <i class="icon">📊</i> Dashboard
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                        <i class="icon">📝</i> Enviar KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                        <i class="icon">🔍</i> Análise KYC
+                    </a>
+                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                        <i class="icon">👤</i> Clientes
+                    </a>
 
                 <?php // Menu Padrão (outros usuários logados)
                 else: ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="<?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">Dashboard</a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="<?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">Histórico</a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="<?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">Enviar KYC</a>
+                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                        <i class="icon">📊</i> Dashboard
+                    </a>
+                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                        <i class="icon">📋</i> Histórico
+                    </a>
+                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                        <i class="icon">📝</i> Enviar KYC
+                    </a>
                 <?php endif; 
 
                 // Link de Sair aparece para todos os usuários logados ?>
-                <a href="<?= $path_prefix ?>logout.php" class="logout-link">Sair</a>
+                <a href="<?= $path_prefix ?>logout.php" class="sidebar-nav-link logout-link">
+                    <i class="icon-logout">🚪</i> Sair
+                </a>
                 <?php // --- FIM DA NOVA LÓGICA DE MENU --- ?>
             </nav>
-        </header>
+        </aside>
         <main class='main-content'>
 
     <?php else: // Layout para páginas públicas (incluindo portal do cliente) ?>

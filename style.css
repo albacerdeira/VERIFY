@@ -1,7 +1,7 @@
 /* --- Reset e Estilos Globais --- */
 body, html { margin: 0; padding: 0; font-family: 'Poppins', sans-serif; background-color: #f4f7f9; color: #333; font-size: 13px; }
 * { box-sizing: border-box; }
-:root { --primary-color: #667eea; /* Cor padrão, será sobrescrita pelo PHP */ }
+:root { --primary-color: #667eea; /* Cor padrão, será sobrescrita pelo PHP */ --sidebar-width: 260px; }
 
 /* --- Animações e Utilitários --- */
 .hidden { display: none; }
@@ -10,19 +10,47 @@ body, html { margin: 0; padding: 0; font-family: 'Poppins', sans-serif; backgrou
 .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
 .animate-spin { animation: spin 1s linear infinite; height: 1.25rem; width: 1.25rem; margin: auto; }
 
-/* --- Layout Global da Página --- */
-.page-container { display: flex; flex-direction: column; min-height: 100vh; }
-.main-header { background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 15px 40px; width: 100%; z-index: 100; }
-.header-top { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; padding-bottom: 15px; border-bottom: 1px solid #eee; }
-.company-logo { height: 40px; }
-.user-info span { font-weight: 500; }
-.main-nav { max-width: 1200px; margin: 10px auto 0; display: flex; align-items: center; gap: 20px; }
-.main-nav a { text-decoration: none; color: #555; padding: 8px 12px; border-radius: 6px; font-weight: 500; font-size: 0.95rem; transition: background-color 0.2s, color 0.2s; }
-.main-nav a:hover { background-color: #f0f0f0; color: #111; }
-.main-nav a[href*='logout'] { margin-left: auto; color: #ef4444; }
-.main-nav a[href*='logout']:hover { background-color: #fee2e2; color: #c82b2b; }
-.main-content { flex-grow: 1; width: 100%; max-width: 1900px; margin: 30px auto; padding: 0 20px; }
-.main-footer { text-align: center; padding: 20px; font-size: 0.9rem; color: #888; background-color: #fff; border-top: 1px solid #eee; margin-top: auto; }
+/* --- Layout Global da Página com Sidebar --- */
+.page-container { display: flex; min-height: 100vh; position: relative; }
+
+/* --- Sidebar --- */
+.sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: var(--sidebar-width); background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%); box-shadow: 2px 0 10px rgba(0,0,0,0.08); display: flex; flex-direction: column; z-index: 1000; transition: transform 0.3s ease; overflow-y: auto; }
+.sidebar-header { padding: 20px; border-bottom: 1px solid #e9ecef; text-align: center; }
+.sidebar-logo { height: 45px; max-width: 100%; }
+.sidebar-user { padding: 15px 20px; background: linear-gradient(135deg, var(--primary-color) 0%, color-mix(in srgb, var(--primary-color) 80%, #000) 100%); color: white; text-align: center; }
+.sidebar-user-name { display: block; font-weight: 600; font-size: 0.95rem; margin-bottom: 3px; }
+.sidebar-user-role { display: block; font-size: 0.8rem; opacity: 0.9; }
+.sidebar-nav { flex: 1; padding: 15px 0; }
+.sidebar-nav-link { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 4px 12px; color: #495057; text-decoration: none; border-radius: 8px; font-weight: 500; font-size: 0.9rem; transition: all 0.2s; }
+.sidebar-nav-link:hover { background-color: #e9ecef; color: #212529; }
+.sidebar-nav-link.active { background-color: var(--primary-color); color: white; font-weight: 600; }
+.sidebar-nav-link .icon { font-size: 1.1rem; width: 24px; text-align: center; }
+.sidebar-nav-link.logout-link { color: #dc3545; border-top: 1px solid #e9ecef; margin-left: 12px; margin-right: 12px; padding-top: 15px; margin-top: 15px; }
+.sidebar-nav-link.logout-link:hover { background-color: #fee2e2; color: #c82b2b; }
+
+/* --- Botão Toggle Mobile --- */
+.sidebar-toggle { display: none; position: fixed; top: 15px; left: 15px; z-index: 1100; background: var(--primary-color); border: none; border-radius: 8px; padding: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.sidebar-toggle span { display: block; width: 22px; height: 2px; background: white; margin: 4px 0; transition: 0.3s; }
+.sidebar-toggle:hover { filter: brightness(0.9); }
+
+/* --- Overlay Mobile --- */
+.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; transition: opacity 0.3s; }
+
+/* --- Main Content --- */
+.main-content { flex-grow: 1; margin-left: var(--sidebar-width); width: calc(100% - var(--sidebar-width)); max-width: 1900px; padding: 30px 20px; transition: margin-left 0.3s ease; }
+
+/* --- Footer --- */
+.main-footer { margin-left: var(--sidebar-width); text-align: center; padding: 20px; font-size: 0.9rem; color: #888; background-color: #fff; border-top: 1px solid #eee; }
+
+/* --- Responsividade Mobile --- */
+@media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.active { transform: translateX(0); }
+    .sidebar-toggle { display: block; }
+    .sidebar-overlay.active { display: block; opacity: 1; }
+    .main-content { margin-left: 0; width: 100%; }
+    .main-footer { margin-left: 0; }
+}
 
 /* --- Card de Consulta CNPJ --- */
 .consulta-cnj-container { background-color: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); margin-bottom: 30px; }

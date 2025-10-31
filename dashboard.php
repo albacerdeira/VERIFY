@@ -3,54 +3,29 @@ $page_title = 'Dashboard';
 require_once 'bootstrap.php';
 require 'header.php'; 
 ?>
-<!DOCTYPE html>
-<html lang='pt-BR'>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Dashboard - <?= htmlspecialchars($nome_empresa) ?></title>
-    <link href='https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' rel='stylesheet'>
-    <link rel='stylesheet' href='/style.css'>
-    <style>
-        :root { --primary-color: <?= $cor_variavel ?>; }
-        .hidden { display: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
-        .animate-spin { animation: spin 1s linear infinite; }
-        .btn-consultar { background-color: var(--primary-color); }
-        .btn-consultar:hover { background-color: var(--primary-color); filter: brightness(0.9); }
-        .qsa-table { overflow-x: auto; }
-    </style>
-</head>
-<body>
-    <div class='dashboard-container'>
-        
-        <main class='dashboard-main'>
-            <div class='consulta-cnj-container'>
-                <h2>Consulta de CNPJ</h2>
-                <p>Digite o CNPJ que deseja consultar.</p>
 
-                <form id='cnpj-form' class='consulta-form'>
-                    <div class='input-group-dashboard'>
-                        <input type='text' id='cnpj' name='cnpj' placeholder='00.000.000/0000-00' required maxlength='18'>
-                        <button type='submit' id='search-button' class='btn-consultar'>
-                            <span id='button-text'>Consultar</span>
-                            <svg id='loading-spinner' class='animate-spin hidden' style='height: 1.25rem; width: 1.25rem; margin: auto;' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'>
-                                <circle style='opacity: 0.25;' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle>
-                                <path style='opacity: 0.75;' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
-                            </svg>
-                        </button>
-                    </div>
-                </form>
-                 <div id='error-message' class='hidden' style='margin-top: 1rem; color: #e53e3e; font-weight: 500; background-color: #fed7d7; padding: 1rem; border-radius: 0.5rem;'></div>
-            </div>
+<div class='consulta-cnj-container'>
+    <h2>Consulta de CNPJ</h2>
+    <p>Digite o CNPJ que deseja consultar.</p>
 
-            <div id='result-container' class='resultado-container hidden'></div>
-        </main>
-    </div>
+    <form id='cnpj-form' class='consulta-form'>
+        <div class='input-group-dashboard'>
+            <input type='text' id='cnpj' name='cnpj' placeholder='00.000.000/0000-00' required maxlength='18'>
+            <button type='submit' id='search-button' class='btn-consultar'>
+                <span id='button-text'>Consultar</span>
+                <svg id='loading-spinner' class='animate-spin hidden' style='height: 1.25rem; width: 1.25rem; margin: auto;' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'>
+                    <circle style='opacity: 0.25;' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle>
+                    <path style='opacity: 0.75;' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
+                </svg>
+            </button>
+        </div>
+    </form>
+    <div id='error-message' class='error-message hidden'></div>
+</div>
 
-    <script>
+<div id='result-container' class='resultado-container hidden'></div>
+
+<script>
     // --- MÁSCARA DE CNPJ ---
     const cnpjInput = document.getElementById('cnpj');
     if (cnpjInput) {
@@ -234,6 +209,6 @@ require 'header.php';
         }
     }, true);
 
-    </script>
-</body>
-</html>
+</script>
+
+<?php require 'footer.php'; ?>
