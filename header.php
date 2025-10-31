@@ -44,8 +44,9 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <title><?= htmlspecialchars($page_title_final) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link href='https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap' rel='stylesheet'>
-    <link rel='stylesheet' href='<?= $path_prefix ?>style.css?v=<?= time() ?>'>
+    <link rel='stylesheet' href='<?= $path_prefix ?>style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>'>
     
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -96,100 +97,151 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
         <aside class='sidebar' id='sidebar'>
             <div class='sidebar-header'>
                  <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='sidebar-logo'></a>
+                 <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Minimizar Sidebar">
+                    <span class="collapse-icon">◀</span>
+                 </button>
             </div>
             <div class='sidebar-user'>
                 <span class='sidebar-user-name'><?= htmlspecialchars($user_nome) ?></span>
                 <span class='sidebar-user-role'><?= htmlspecialchars(ucfirst($user_role)) ?></span>
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" aria-label="Menu principal">
                 <?php // --- INÍCIO DA NOVA LÓGICA DE MENU ---
 
                 // Menu do Superadmin
                 if ($is_superadmin): ?>
                     <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
-                        <i class="icon">📊</i> Dashboard
+                        <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                        <i class="icon">📋</i> Histórico
-                    </a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                        <i class="icon">📝</i> Enviar KYC
-                    </a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
-                        <i class="icon">🔍</i> Análise KYC
-                    </a>
-                    <a href="<?= $path_prefix ?>empresas.php" class="sidebar-nav-link <?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">🏢</i> Empresas
-                    </a>
-                    <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">👥</i> Usuários
-                    </a>
-                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">👤</i> Clientes
-                    </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-folder"></i> <span class="link-text">Gestão</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>empresas.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Empresas</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-people"></i> <span class="link-text">Usuários</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
+                            </a>
+                        </div>
+                    </div>
+                    
                     <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
-                        <i class="icon">⚙️</i> Configurações
+                        <i class="bi bi-gear"></i> <span class="link-text">Configurações</span>
                     </a>
                     <a href="<?= $path_prefix ?>admin_import.php" class="sidebar-nav-link <?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">
-                        <i class="icon">📥</i> Importar Listas
+                        <i class="bi bi-cloud-upload"></i> <span class="link-text">Importar Listas</span>
                     </a>
 
                 <?php // Menu do Admin
                 elseif ($is_admin): ?>
                     <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
-                        <i class="icon">📊</i> Dashboard
+                        <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                        <i class="icon">📋</i> Histórico
-                    </a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                        <i class="icon">📝</i> Enviar KYC
-                    </a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
-                        <i class="icon">🔍</i> Análise KYC
-                    </a>
-                    <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">👥</i> Usuários
-                    </a>
-                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">👤</i> Clientes
-                    </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-folder"></i> <span class="link-text">Gestão</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-people"></i> <span class="link-text">Usuários</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
+                            </a>
+                        </div>
+                    </div>
+                    
                     <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
-                        <i class="icon">⚙️</i> Configurações
+                        <i class="bi bi-gear"></i> <span class="link-text">Configurações</span>
                     </a>
                 
 
                 <?php // Menu do Analista
                 elseif ($is_analista): ?>
                     <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
-                        <i class="icon">📊</i> Dashboard
+                        <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
-                    <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                        <i class="icon">📝</i> Enviar KYC
-                    </a>
-                    <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
-                        <i class="icon">🔍</i> Análise KYC
-                    </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
+                            </a>
+                        </div>
+                    </div>
+                    
                     <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                        <i class="icon">👤</i> Clientes
+                        <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
                     </a>
 
                 <?php // Menu Padrão (outros usuários logados)
                 else: ?>
                     <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
-                        <i class="icon">📊</i> Dashboard
+                        <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
                     <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                        <i class="icon">📋</i> Histórico
+                        <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
                     </a>
                     <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                        <i class="icon">📝</i> Enviar KYC
+                        <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
                     </a>
                 <?php endif; 
 
                 // Link de Sair aparece para todos os usuários logados ?>
                 <a href="<?= $path_prefix ?>logout.php" class="sidebar-nav-link logout-link">
-                    <i class="icon-logout">🚪</i> Sair
+                    <i class="bi bi-box-arrow-right icon-logout"></i> <span class="link-text">Sair</span>
                 </a>
                 <?php // --- FIM DA NOVA LÓGICA DE MENU --- ?>
             </nav>
