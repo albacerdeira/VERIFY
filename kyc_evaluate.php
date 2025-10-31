@@ -37,6 +37,185 @@ $stmt_caso = $pdo->prepare("SELECT e.*, a.*, e.id AS kyc_id_real, e.status AS st
 $stmt_caso->execute(['id' => $kyc_id]);
 $caso = $stmt_caso->fetch(PDO::FETCH_ASSOC);
 
+// --- VERIFICAÇÃO CEIS (PJ - Empresa) ---
+$sancoes_ceis_confirmadas_pj = []; 
+$ceis_match_found_pj = false;       
+$sancoes_ceis_confirmadas_pf = [];
+$ceis_match_found_pf = false;
+
+// --- VERIFICAÇÃO CNEP ---
+$sancoes_cnep_confirmadas_pj = [];
+$cnep_match_found_pj = false;
+$sancoes_cnep_confirmadas_pf = [];
+$cnep_match_found_pf = false;
+
+
+if ($caso && !empty($caso['cnpj'])) {
+    $cnpj_limpo = preg_replace('/[^0-9]/', '', $caso['cnpj']);
+    $cnpj_raiz = substr($cnpj_limpo, 0, 5); 
+    $razao_social_caso = strtoupper($caso['razao_social']); 
+    
+    if (strlen($cnpj_raiz) === 5) { 
+        // Lógica CEIS PJ
+        $stmt_ceis = $pdo->prepare("SELECT * FROM ceis WHERE cpf_cnpj_sancionado LIKE :cnpj_raiz");
+        $stmt_ceis->execute([':cnpj_raiz' => $cnpj_raiz . '%']);
+        $potenciais_sancoes = $stmt_ceis->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($potenciais_sancoes as $sancao) {
+            $similaridade_nome = 0; $similaridade_razao = 0;
+            if (!empty($sancao['nome_sancionado'])) { similar_text($razao_social_caso, strtoupper($sancao['nome_sancionado']), $similaridade_nome); }
+            if (!empty($sancao['razao_social'])) { similar_text($razao_social_caso, strtoupper($sancao['razao_social']), $similaridade_razao); }
+
+            if ($similaridade_nome >= 85 || $similaridade_razao >= 85) {
+                $ceis_match_found_pj = true; 
+                $sancoes_ceis_confirmadas_pj[] = $sancao; 
+            }
+        }
+
+        // LÓGICA CNEP PJ
+        $stmt_cnep = $pdo->prepare("SELECT * FROM cnep WHERE cpf_cnpj_sancionado LIKE :cnpj_raiz");
+        $stmt_cnep->execute([':cnpj_raiz' => $cnpj_raiz . '%']);
+        $potenciais_sancoes_cnep = $stmt_cnep->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($potenciais_sancoes_cnep as $sancao) {
+            $similaridade_nome = 0; $similaridade_razao = 0;
+            if (!empty($sancao['nome_sancionado'])) { similar_text($razao_social_caso, strtoupper($sancao['nome_sancionado']), $similaridade_nome); }
+            if (!empty($sancao['razao_social'])) { similar_text($razao_social_caso, strtoupper($sancao['razao_social']), $similaridade_razao); }
+
+            if ($similaridade_nome >= 85 || $similaridade_razao >= 85) {
+                $cnep_match_found_pj = true; 
+                $sancoes_cnep_confirmadas_pj[] = $sancao; 
+            }
+        }
+    }
+}
+// --- FIM DA VERIFICAÇÃO PJ (CEIS e CNEP) ---
+
+// --- INÍCIO DAS VERIFICAÇÕES DE SÓCIOS (PF) ---
+
+// Carrega os CPFs dos sócios
+$stmt_socios_cpfs = $pdo->prepare("SELECT id, cpf_cnpj FROM kyc_socios WHERE empresa_id = :id");
+$stmt_socios_cpfs->execute(['id' => $kyc_id]);
+$socios_cpfs_data = $stmt_socios_cpfs->fetchAll(PDO::FETCH_ASSOC);
+
+$cpfs_limpos_para_buscar = [];
+$cpfs_formatados_para_buscar = [];
+$map_middle_to_full_cpf = []; // Mapeia a parte do meio para o CPF completo formatado
+
+if (!empty($socios_cpfs_data)) {
+    foreach ($socios_cpfs_data as $socio) {
+        $cpf_cnpj_formatado = $socio['cpf_cnpj'];
+        $cpf_cnpj_limpo = preg_replace('/[^0-9]/', '', $cpf_cnpj_formatado);
+
+        if (strlen($cpf_cnpj_limpo) === 11) { // É um CPF
+            $cpfs_limpos_para_buscar[] = $cpf_cnpj_limpo;
+            if (strlen($cpf_cnpj_formatado) === 14) { // Verifica se tem o formato XXX.XXX.XXX-XX
+                 $cpfs_formatados_para_buscar[] = $cpf_cnpj_formatado;
+                 // Extrai a parte do meio XXX.XXX
+                 $middle_part = substr($cpf_cnpj_formatado, 4, 7); // Pega a partir do 5º caractere (índice 4), 7 caracteres
+                 if (strlen($middle_part) === 7) {
+                     $map_middle_to_full_cpf[$middle_part] = $cpf_cnpj_formatado;
+                 }
+            }
+        }
+    }
+}
+
+$cpfs_limpos_unicos = array_unique($cpfs_limpos_para_buscar);
+$cpfs_formatados_unicos = array_unique($cpfs_formatados_para_buscar);
+$middle_parts_unicos = array_keys($map_middle_to_full_cpf); // Pega as chaves únicas (partes do meio)
+
+// --- VERIFICAÇÃO CEIS (PF - Sócios) ---
+if (!empty($cpfs_limpos_unicos)) {
+    $placeholders = rtrim(str_repeat('?,', count($cpfs_limpos_unicos)), ',');
+    $sql_ceis_pf = "SELECT * FROM ceis WHERE cpf_cnpj_sancionado IN ($placeholders)";
+    
+    try {
+        $stmt_ceis_pf = $pdo->prepare($sql_ceis_pf);
+        $stmt_ceis_pf->execute(array_values($cpfs_limpos_unicos)); 
+        $sancoes_encontradas_pf = $stmt_ceis_pf->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($sancoes_encontradas_pf)) {
+            $ceis_match_found_pf = true;
+            $sancoes_ceis_confirmadas_pf = $sancoes_encontradas_pf;
+        }
+    } catch (PDOException $e) {
+         error_log("Erro ao buscar CEIS para Sócios (PF) kyc_id=$kyc_id: " . $e->getMessage());
+    }
+
+    // --- VERIFICAÇÃO CNEP (PF - Sócios) ---
+    $sql_cnep_pf = "SELECT * FROM cnep WHERE cpf_cnpj_sancionado IN ($placeholders)";
+    try {
+        $stmt_cnep_pf = $pdo->prepare($sql_cnep_pf);
+        $stmt_cnep_pf->execute(array_values($cpfs_limpos_unicos)); 
+        $sancoes_encontradas_cnep_pf = $stmt_cnep_pf->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($sancoes_encontradas_cnep_pf)) {
+            $cnep_match_found_pf = true;
+            $sancoes_cnep_confirmadas_pf = $sancoes_encontradas_cnep_pf;
+        }
+    } catch (PDOException $e) {
+         error_log("Erro ao buscar CNEP para Sócios (PF) kyc_id=$kyc_id: " . $e->getMessage());
+    }
+}
+// --- FIM DA VERIFICAÇÃO CEIS/CNEP (PF) ---
+
+// --- CORREÇÃO: VERIFICAÇÃO PEP (PF - Sócios) usando LIKE ---
+$peps_confirmados_pf = [];
+$pep_match_found_pf = false;
+$pep_cpfs_found_full = []; // Armazena os CPFs completos encontrados como PEP
+
+if (!empty($middle_parts_unicos)) {
+    $sql_pep_conditions = [];
+    $sql_pep_params = [];
+    foreach ($middle_parts_unicos as $middle_part) {
+        // Cria um padrão LIKE para o formato ***.XXX.XXX-**
+        $sql_pep_conditions[] = "cpf LIKE ?";
+        $sql_pep_params[] = '***.' . $middle_part . '-**'; 
+    }
+    
+    $sql_pep_pf = "SELECT * FROM peps WHERE " . implode(' OR ', $sql_pep_conditions);
+    
+    try {
+        $stmt_pep_pf = $pdo->prepare($sql_pep_pf);
+        $stmt_pep_pf->execute($sql_pep_params);
+        $peps_encontrados_pf = $stmt_pep_pf->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($peps_encontrados_pf)) {
+            $pep_match_found_pf = true;
+            $peps_confirmados_pf = $peps_encontrados_pf;
+
+            // Mapeia de volta para os CPFs completos para a atualização
+            foreach ($peps_encontrados_pf as $pep) {
+                // Extrai a parte do meio do CPF encontrado na tabela peps
+                $found_middle_part = substr($pep['cpf'], 4, 7); 
+                if (isset($map_middle_to_full_cpf[$found_middle_part])) {
+                    $pep_cpfs_found_full[] = $map_middle_to_full_cpf[$found_middle_part];
+                }
+            }
+            $pep_cpfs_found_full = array_unique($pep_cpfs_found_full); // Garante CPFs únicos
+
+            // ATUALIZA A FLAG is_pep NA TABELA kyc_socios usando os CPFs COMPLETOS
+            if (!empty($pep_cpfs_found_full)) {
+                $placeholders_update = rtrim(str_repeat('?,', count($pep_cpfs_found_full)), ',');
+                $sql_update_pep = "UPDATE kyc_socios SET is_pep = 1 WHERE empresa_id = ? AND cpf_cnpj IN ($placeholders_update)";
+                
+                try {
+                    $stmt_update_pep = $pdo->prepare($sql_update_pep);
+                    $params = array_merge([$kyc_id], $pep_cpfs_found_full);
+                    $stmt_update_pep->execute($params);
+                } catch (PDOException $e) {
+                    error_log("Erro ao ATUALIZAR flag PEP para kyc_id=$kyc_id: " . $e->getMessage());
+                }
+            }
+        }
+    } catch (PDOException $e) {
+         error_log("Erro ao buscar PEPs para Sócios (PF) kyc_id=$kyc_id: " . $e->getMessage());
+    }
+}
+// --- FIM DA VERIFICAÇÃO PEP (PF) ---
+
+
 if (!$caso) {
     require_once 'header.php';
     echo "<div class='container p-4'><div class='alert alert-danger'>Registro KYC não encontrado.</div></div>";
@@ -51,23 +230,40 @@ $analista_nome = $_SESSION['user_nome'] ?? 'Usuário Desconhecido';
 
 // --- PROCESSAMENTO DO FORMULÁRIO (POST) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $av_check_ceis_pj_ok_value = $ceis_match_found_pj ? 0 : 1;
+    $av_check_ceis_pf_ok_value = $ceis_match_found_pf ? 0 : 1;
+    $av_check_cnep_pj_ok_value = $cnep_match_found_pj ? 0 : 1;
+    $av_check_cnep_pf_ok_value = $cnep_match_found_pf ? 0 : 1;
+
     $pdo->beginTransaction();
     try {
-        // 1. Atualiza o status na tabela principal de empresas
+        // 1. Atualiza o status na tabela principal
         $stmt_status = $pdo->prepare("UPDATE kyc_empresas SET status = :status WHERE id = :kyc_id");
         $stmt_status->execute([':status' => $_POST['status_caso'], ':kyc_id' => $kyc_id]);
 
-        // 2. CORREÇÃO: Insere ou atualiza o registro de avaliação geral com TODOS os campos
+        // 2. Insere ou atualiza o registro de avaliação geral
         $avaliacao_sql = "
             INSERT INTO kyc_avaliacoes (
                 kyc_empresa_id, av_analista_id, 
                 av_check_dados_empresa_ok, av_check_perfil_negocio_ok, av_check_socios_ubos_ok, av_check_socios_ubos_origin, av_check_documentos_ok, 
-                av_anotacoes_internas, av_risco_atividade, av_risco_geografico, av_risco_societario, 
-                av_risco_midia_pep, av_risco_final, av_justificativa_risco, av_info_pendencia
+                av_check_ceis_ok, av_check_ceis_pf_ok,
+                av_check_cnep_ok, av_check_cnep_pf_ok,
+                av_obs_dados_empresa, 
+                av_check_perfil_atividade, av_check_perfil_motivo, av_check_perfil_fluxo, av_check_perfil_volume, av_check_perfil_origem, 
+                av_obs_perfil_negocio,
+                av_check_doc_contrato_social, av_check_doc_ultima_alteracao, av_check_doc_cartao_cnpj, av_check_doc_balanco, av_check_doc_balancete, av_check_doc_dirpj,
+                av_obs_documentos,
+                av_risco_atividade, av_risco_geografico, av_risco_societario, av_risco_midia_pep, 
+                av_risco_final, av_justificativa_risco, av_info_pendencia
             ) VALUES (
                 :kyc_id, :analista_id, 
-                :c1, :c2, :c3, :c3_origin, :c4, 
-                :anotacoes, :r1, :r2, :r3, :r4, :r_final, :justificativa, :pendencia
+                :c1, :c2, :c3, :c3_origin, :c4,
+                :c_ceis_pj, :c_ceis_pf,
+                :c_cnep_pj, :c_cnep_pf,
+                :obs1, :cp1, :cp2, :cp3, :cp4, :cp5, :obs2,
+                :cd1, :cd2, :cd3, :cd4, :cd5, :cd6, :obs3,
+                :r1, :r2, :r3, :r4,
+                :r_final, :justificativa, :pendencia
             ) ON DUPLICATE KEY UPDATE 
                 av_analista_id = VALUES(av_analista_id),
                 av_check_dados_empresa_ok = VALUES(av_check_dados_empresa_ok),
@@ -75,7 +271,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 av_check_socios_ubos_ok = VALUES(av_check_socios_ubos_ok),
                 av_check_socios_ubos_origin = VALUES(av_check_socios_ubos_origin),
                 av_check_documentos_ok = VALUES(av_check_documentos_ok),
-                av_anotacoes_internas = VALUES(av_anotacoes_internas),
+                av_check_ceis_ok = VALUES(av_check_ceis_ok),
+                av_check_ceis_pf_ok = VALUES(av_check_ceis_pf_ok),
+                av_check_cnep_ok = VALUES(av_check_cnep_ok),
+                av_check_cnep_pf_ok = VALUES(av_check_cnep_pf_ok),
+                av_obs_dados_empresa = VALUES(av_obs_dados_empresa),
+                av_check_perfil_atividade = VALUES(av_check_perfil_atividade),
+                av_check_perfil_motivo = VALUES(av_check_perfil_motivo),
+                av_check_perfil_fluxo = VALUES(av_check_perfil_fluxo),
+                av_check_perfil_volume = VALUES(av_check_perfil_volume),
+                av_check_perfil_origem = VALUES(av_check_perfil_origem),
+                av_obs_perfil_negocio = VALUES(av_obs_perfil_negocio),
+                av_check_doc_contrato_social = VALUES(av_check_doc_contrato_social),
+                av_check_doc_ultima_alteracao = VALUES(av_check_doc_ultima_alteracao),
+                av_check_doc_cartao_cnpj = VALUES(av_check_doc_cartao_cnpj),
+                av_check_doc_balanco = VALUES(av_check_doc_balanco),
+                av_check_doc_balancete = VALUES(av_check_doc_balancete),
+                av_check_doc_dirpj = VALUES(av_check_doc_dirpj),
+                av_obs_documentos = VALUES(av_obs_documentos),
                 av_risco_atividade = VALUES(av_risco_atividade),
                 av_risco_geografico = VALUES(av_risco_geografico),
                 av_risco_societario = VALUES(av_risco_societario),
@@ -92,7 +305,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':c3' => isset($_POST['av_check_socios_ubos_ok']) ? 1 : 0, 
             ':c3_origin' => $_POST['av_check_socios_ubos_origin'] ?? 'analyst',
             ':c4' => isset($_POST['av_check_documentos_ok']) ? 1 : 0,
-            ':anotacoes' => $_POST['av_anotacoes_internas'] ?? null,
+            ':c_ceis_pj' => $av_check_ceis_pj_ok_value,
+            ':c_ceis_pf' => $av_check_ceis_pf_ok_value,
+            ':c_cnep_pj' => $av_check_cnep_pj_ok_value,
+            ':c_cnep_pf' => $av_check_cnep_pf_ok_value,
+            ':obs1' => $_POST['av_obs_dados_empresa'] ?? null,
+            ':cp1' => isset($_POST['av_check_perfil_atividade']) ? 1 : 0,
+            ':cp2' => isset($_POST['av_check_perfil_motivo']) ? 1 : 0,
+            ':cp3' => isset($_POST['av_check_perfil_fluxo']) ? 1 : 0,
+            ':cp4' => isset($_POST['av_check_perfil_volume']) ? 1 : 0,
+            ':cp5' => isset($_POST['av_check_perfil_origem']) ? 1 : 0,
+            ':obs2' => $_POST['av_obs_perfil_negocio'] ?? null,
+            ':cd1' => isset($_POST['av_check_doc_contrato_social']) ? 1 : 0,
+            ':cd2' => isset($_POST['av_check_doc_ultima_alteracao']) ? 1 : 0,
+            ':cd3' => isset($_POST['av_check_doc_cartao_cnpj']) ? 1 : 0,
+            ':cd4' => isset($_POST['av_check_doc_balanco']) ? 1 : 0,
+            ':cd5' => isset($_POST['av_check_doc_balancete']) ? 1 : 0,
+            ':cd6' => isset($_POST['av_check_doc_dirpj']) ? 1 : 0,
+            ':obs3' => $_POST['av_obs_documentos'] ?? null,
             ':r1' => $_POST['av_risco_atividade'] ?? null, 
             ':r2' => $_POST['av_risco_geografico'] ?? null,
             ':r3' => $_POST['av_risco_societario'] ?? null, 
@@ -119,14 +349,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4. Prepara e registra a ação no log com o snapshot completo da avaliação
         $log_acao = sprintf("Status alterado para '%s'. Análise de risco final: %s.", htmlspecialchars($_POST['status_caso']), htmlspecialchars($_POST['av_risco_final']));
 
-        // CORREÇÃO: Cria um array com todos os dados da avaliação para o snapshot
+        // Adiciona todos os novos campos ao array do snapshot
         $snapshot_data = [
             'status_caso' => $_POST['status_caso'],
             'av_check_dados_empresa_ok' => isset($_POST['av_check_dados_empresa_ok']) ? 1 : 0,
             'av_check_perfil_negocio_ok' => isset($_POST['av_check_perfil_negocio_ok']) ? 1 : 0,
             'av_check_socios_ubos_ok' => isset($_POST['av_check_socios_ubos_ok']) ? 1 : 0,
-            'av_check_socios_ubos_origin' => $_POST['av_check_socios_ubos_origin'] ?? 'analyst', // Campo adicionado
+            'av_check_socios_ubos_origin' => $_POST['av_check_socios_ubos_origin'] ?? 'analyst',
             'av_check_documentos_ok' => isset($_POST['av_check_documentos_ok']) ? 1 : 0,
+            'av_check_ceis_ok' => $av_check_ceis_pj_ok_value,
+            'av_check_ceis_pf_ok' => $av_check_ceis_pf_ok_value,
+            'av_check_cnep_ok' => $av_check_cnep_pj_ok_value,
+            'av_check_cnep_pf_ok' => $av_check_cnep_pf_ok_value,
             'av_anotacoes_internas' => $_POST['av_anotacoes_internas'] ?? null,
             'av_risco_atividade' => $_POST['av_risco_atividade'] ?? null,
             'av_risco_geografico' => $_POST['av_risco_geografico'] ?? null,
@@ -135,6 +369,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'av_risco_final' => $_POST['av_risco_final'] ?? null,
             'av_justificativa_risco' => $_POST['av_justificativa_risco'] ?? null,
             'av_info_pendencia' => $_POST['av_info_pendencia'] ?? null,
+            
+            'av_obs_dados_empresa' => $_POST['av_obs_dados_empresa'] ?? null,
+            'av_obs_perfil_negocio' => $_POST['av_obs_perfil_negocio'] ?? null,
+            'av_obs_documentos' => $_POST['av_obs_documentos'] ?? null,
+
+            'av_check_perfil_atividade' => isset($_POST['av_check_perfil_atividade']) ? 1 : 0,
+            'av_check_perfil_motivo' => isset($_POST['av_check_perfil_motivo']) ? 1 : 0,
+            'av_check_perfil_fluxo' => isset($_POST['av_check_perfil_fluxo']) ? 1 : 0,
+            'av_check_perfil_volume' => isset($_POST['av_check_perfil_volume']) ? 1 : 0,
+            'av_check_perfil_origem' => isset($_POST['av_check_perfil_origem']) ? 1 : 0,
+
+            'av_check_doc_contrato_social' => isset($_POST['av_check_doc_contrato_social']) ? 1 : 0,
+            'av_check_doc_ultima_alteracao' => isset($_POST['av_check_doc_ultima_alteracao']) ? 1 : 0,
+            'av_check_doc_cartao_cnpj' => isset($_POST['av_check_doc_cartao_cnpj']) ? 1 : 0,
+            'av_check_doc_balanco' => isset($_POST['av_check_doc_balanco']) ? 1 : 0,
+            'av_check_doc_balancete' => isset($_POST['av_check_doc_balancete']) ? 1 : 0,
+            'av_check_doc_dirpj' => isset($_POST['av_check_doc_dirpj']) ? 1 : 0,
+
             'analise_socios' => []
         ];
 
@@ -169,9 +421,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // --- CARREGAMENTO DE DADOS (GET) ---
-// Os dados do $caso já foram carregados antes da checagem de permissão.
 
 // Carrega dados relacionados
+// IMPORTANTE: Esta consulta é FEITA DEPOIS da lógica de atualização da flag PEP.
+// Assim, $socio['is_pep'] já virá atualizado do banco.
 $socios = $pdo->prepare("
     SELECT 
         id, empresa_id, nome_completo, data_nascimento, cpf_cnpj, qualificacao_cargo, 
@@ -182,8 +435,10 @@ $socios = $pdo->prepare("
 ");
 $socios->execute(['id' => $kyc_id]);
 
-$documentos = $pdo->prepare("SELECT * FROM kyc_documentos WHERE empresa_id = :id");
-$documentos->execute(['id' => $kyc_id]);
+// Carrega todos os documentos em um array de uma só vez
+$stmt_docs = $pdo->prepare("SELECT * FROM kyc_documentos WHERE empresa_id = :id");
+$stmt_docs->execute(['id' => $kyc_id]);
+$all_documents = $stmt_docs->fetchAll(PDO::FETCH_ASSOC);
 
 $cnaes_secundarios = $pdo->prepare("SELECT * FROM kyc_cnaes_secundarios WHERE empresa_id = :id ORDER BY id");
 $cnaes_secundarios->execute(['id' => $kyc_id]);
@@ -202,6 +457,7 @@ $log_atividades->execute(['kyc_id' => $kyc_id]);
 
 $page_title = "Análise KYC - " . htmlspecialchars($caso['razao_social']);
 require 'header.php';
+
 
 // --- FUNÇÕES AUXILIARES DE RENDERIZAÇÃO ---
 if (!function_exists('display_field')) {
@@ -223,13 +479,140 @@ if (!function_exists('render_risk_select')) {
         return $html;
     }
 }
+function render_checklist_icon($name, $label, $is_checked) {
+    $icon_class = $is_checked ? 'fas fa-check-circle text-success' : 'fas fa-times-circle text-danger';
+    $checked_attr = $is_checked ? 'checked' : '';
+    return sprintf(
+        '<div class="form-check d-flex align-items-center mb-2">
+            <input class="form-check-input me-2" type="checkbox" name="%s" id="%s" value="1" %s>
+            <i class="%s me-2"></i>
+            <label class="form-check-label" for="%s">%s</label>
+        </div>',
+        $name, $name, $checked_attr, $icon_class, $name, $label
+    );
+}
 ?>
-<!-- Layout da Página (HTML) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+<style>
+    .checklist-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        padding: 0;
+        clear: both;
+    }
+    .checklist-item-icon {
+        width: 24px;
+        text-align: center;
+        flex-shrink: 0;
+        font-size: 1.2rem;
+    }
+    .checklist-item-label {
+        margin-left: 0.75rem;
+        font-weight: 500;
+    }
+    /* Para os modais de ficha (CEIS, CNEP e PEP) */
+    .ficha-modal-content dt {
+        font-weight: 500;
+        color: #555;
+    }
+    .ficha-modal-content dd {
+        font-weight: 400;
+    }
+</style>
+
 <form action="kyc_evaluate.php?id=<?= $kyc_id; ?>" method="POST">
     <div class="container-fluid mt-4">
         <div class="row">
-            <!-- Coluna Esquerda: Dados do Cliente -->
             <div class="col-lg-7">
+
+                <?php if ($ceis_match_found_pj && !empty($sancoes_ceis_confirmadas_pj)): ?>
+                <div class="card shadow-sm mb-4 border-danger">
+                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CEIS - Empresa PJ)</h5></div>
+                    <div class="card-body">
+                        <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CEIS para o CNPJ raiz desta empresa.</p>
+                        <ul class="list-group">
+                            <?php foreach ($sancoes_ceis_confirmadas_pj as $sancao): ?>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($ceis_match_found_pf && !empty($sancoes_ceis_confirmadas_pf)): ?>
+                <div class="card shadow-sm mb-4 border-danger">
+                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CEIS - Sócios PF)</h5></div>
+                    <div class="card-body">
+                        <p>Atenção: Foram encontradas sanções no CEIS para um ou mais CPFs dos sócios/administradores.</p>
+                        <ul class="list-group">
+                            <?php foreach ($sancoes_ceis_confirmadas_pf as $sancao): ?>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($cnep_match_found_pj && !empty($sancoes_cnep_confirmadas_pj)): ?>
+                <div class="card shadow-sm mb-4 border-danger">
+                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CNEP - Empresa PJ)</h5></div>
+                    <div class="card-body">
+                        <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CNEP para o CNPJ raiz desta empresa.</p>
+                        <ul class="list-group">
+                            <?php foreach ($sancoes_cnep_confirmadas_pj as $sancao): ?>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($cnep_match_found_pf && !empty($sancoes_cnep_confirmadas_pf)): ?>
+                <div class="card shadow-sm mb-4 border-danger">
+                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CNEP - Sócios PF)</h5></div>
+                    <div class="card-body">
+                        <p>Atenção: Foram encontradas sanções no CNEP para um ou mais CPFs dos sócios/administradores.</p>
+                        <ul class="list-group">
+                            <?php foreach ($sancoes_cnep_confirmadas_pf as $sancao): ?>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($pep_match_found_pf && !empty($peps_confirmados_pf)): ?>
+                <div class="card shadow-sm mb-4 border-warning">
+                    <div class="card-header bg-warning text-dark"><h5 class="mb-0"><i class="fas fa-user-tie me-2"></i>Alerta de Pessoa Exposta Politicamente (PEP)</h5></div>
+                    <div class="card-body">
+                        <p>Atenção: Um ou mais sócios/administradores foram identificados como PEP.</p>
+                        <ul class="list-group">
+                            <?php foreach ($peps_confirmados_pf as $pep): ?>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div><strong>Nome:</strong> <?= htmlspecialchars($pep['nome_pep']) ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($pep['cpf']) ?> | <strong>Função:</strong> <?= htmlspecialchars($pep['descricao_funcao']) ?></small></div>
+                                    <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#pepDetailModal" data-pep-json="<?= htmlspecialchars(json_encode($pep), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+
                 <div class="card shadow-sm mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">Análise de Caso KYC: #<?= $caso['kyc_id_real']; ?></h4>
@@ -237,35 +620,55 @@ if (!function_exists('render_risk_select')) {
                     </div>
                     <div class="card-body">
                         <p class="lead text-muted mb-4">Cliente: <?= htmlspecialchars($caso['razao_social']); ?></p>
-                        <?php require 'kyc_evaluate_accordions.php'; ?>
+                        
+                        <?php require 'kyc_evaluate_accordion.php'; ?>
+                    
                     </div>
                 </div>
             </div>
 
-            <!-- Coluna Direita: Painel de Análise e Logs -->
             <div class="col-lg-5" style="position: sticky; top: 20px;">
+                
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header"><h5 class="mb-0">Documentos Anexados</h5></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <?php
+                            $docs_empresa = array_filter($all_documents, fn($doc) => empty($doc['socio_id']));
+                            if (count($docs_empresa) > 0) {
+                                foreach ($docs_empresa as $doc) {
+                                    $doc_name = htmlspecialchars(ucfirst(str_replace(['doc_', '_'], ['', ' '], $doc['tipo_documento'])));
+                                    $doc_path = htmlspecialchars($doc['path_arquivo'] ?? '#');
+                                    echo "<div class='col-md-6 mb-2'>
+                                            <a href='{$doc_path}' target='_blank' class='btn btn-outline-secondary btn-sm w-100 text-truncate'>{$doc_name}</a>
+                                          </div>";
+                                }
+                            } else {
+                                echo '<div class="col-12"><p class="text-muted">Nenhum documento da empresa foi enviado.</p></div>';
+                            }
+                            ?>
+                        </div>
+                        <div class="mt-3">
+                            <label for="av_obs_documentos" class="form-label small">Observações sobre os Documentos</label>
+                            <textarea class="form-control observation-field" name="av_obs_documentos" id="av_obs_documentos" rows="3" data-label="Documentos"><?= htmlspecialchars($caso['av_obs_documentos'] ?? '') ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card shadow-sm">
                     <div class="card-header"><h5 class="mb-0">Painel de Análise do Compliance</h5></div>
                     <div class="card-body">
                          <fieldset class="mb-4">
                             <legend class="h6 fw-bold border-bottom pb-2 mb-3">Checklist de Validação</legend>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="av_check_dados_empresa_ok" id="c1" <?= ($caso['av_check_dados_empresa_ok'] ?? 0) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="c1">Dados da Empresa</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="av_check_perfil_negocio_ok" id="c2" <?= ($caso['av_check_perfil_negocio_ok'] ?? 0) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="c2">Perfil de Negócio e Financeiro</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="av_check_socios_ubos_ok" id="av_check_socios_ubos_ok" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="av_check_socios_ubos_ok">Sócios e Administradores (UBOs)</label>
-                                <input type="hidden" name="av_check_socios_ubos_origin" id="av_check_socios_ubos_origin" value="<?= htmlspecialchars($caso['av_check_socios_ubos_origin'] ?? 'analyst') ?>">
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="av_check_documentos_ok" id="c4" <?= ($caso['av_check_documentos_ok'] ?? 0) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="c4">Documentos da Empresa</label>
-                            </div>
+                            
+                            <input type="checkbox" name="av_check_dados_empresa_ok" id="av_check_dados_empresa_ok" value="1" class="d-none" <?= ($caso['av_check_dados_empresa_ok'] ?? 0) ? 'checked' : '' ?>>
+                            <input type="checkbox" name="av_check_perfil_negocio_ok" id="av_check_perfil_negocio_ok" value="1" class="d-none" <?= ($caso['av_check_perfil_negocio_ok'] ?? 0) ? 'checked' : '' ?>>
+                            <input type="checkbox" name="av_check_socios_ubos_ok" id="av_check_socios_ubos_ok" value="1" class="d-none" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : '' ?>>
+                            <input type="checkbox" name="av_check_documentos_ok" id="av_check_documentos_ok" value="1" class="d-none" <?= ($caso['av_check_documentos_ok'] ?? 0) ? 'checked' : '' ?>>
+                            
+                            <div id="checklist-icons-container"></div>
+                            
+                            <input type="hidden" name="av_check_socios_ubos_origin" id="av_check_socios_ubos_origin" value="<?= htmlspecialchars($caso['av_check_socios_ubos_origin'] ?? 'analyst') ?>">
                         </fieldset>
                         <div class="mb-3"><label for="anotacoes" class="form-label fw-bold">Anotações Internas</label><textarea name="av_anotacoes_internas" class="form-control" rows="5"><?= htmlspecialchars($caso['av_anotacoes_internas'] ?? ''); ?></textarea></div>
                         <fieldset class="mb-4">
@@ -289,7 +692,6 @@ if (!function_exists('render_risk_select')) {
                         <button type="submit" class="btn btn-primary w-100 btn-lg mt-3">Salvar Análise</button>
                     </div>
                 </div>
-                <!-- Log de Atividades -->
                 <div class="card shadow-sm mt-4">
                     <div class="card-header"><h5 class="mb-0">Log de Atividades</h5></div>
                     <div class="card-body" style="max-height: 400px; overflow-y: auto;">
@@ -298,7 +700,6 @@ if (!function_exists('render_risk_select')) {
                             $logs = $log_atividades->fetchAll(PDO::FETCH_ASSOC);
                             for ($i = 0; $i < count($logs); $i++):
                                 $log = $logs[$i];
-                                // O log anterior é o próximo no array, pois a consulta é em ordem decrescente.
                                 $previous_log_snapshot = isset($logs[$i + 1]) ? $logs[$i + 1]['dados_avaliacao_snapshot'] : 'null';
                             ?>
                                 <li class="list-group-item">
@@ -323,7 +724,6 @@ if (!function_exists('render_risk_select')) {
     </div>
 </form>
 
-<!-- Modal para Detalhes do Log -->
 <div class="modal fade" id="logDetailModal" tabindex="-1" aria-labelledby="logDetailModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -335,8 +735,7 @@ if (!function_exists('render_risk_select')) {
         <p>Estes eram os valores de todos os campos no momento em que a análise foi salva.</p>
         <div class="table-responsive">
             <table class="table table-sm table-bordered" id="log-details-table">
-                <!-- Conteúdo será inserido via JavaScript -->
-            </table>
+                </table>
         </div>
       </div>
       <div class="modal-footer">
@@ -346,91 +745,219 @@ if (!function_exists('render_risk_select')) {
   </div>
 </div>
 
+<div class="modal fade" id="ceisDetailModal" tabindex="-1" aria-labelledby="ceisDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ceisDetailModalLabel">Ficha de Sanção (CEIS)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Detalhes da sanção encontrada na base de dados CEIS.</p>
+        <div id="ceis-modal-content" class="ficha-modal-content"></div> 
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="cnepDetailModal" tabindex="-1" aria-labelledby="cnepDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cnepDetailModalLabel">Ficha de Sanção (CNEP)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Detalhes da sanção encontrada na base de dados CNEP.</p>
+        <div id="cnep-modal-content" class="ficha-modal-content"></div> 
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="pepDetailModal" tabindex="-1" aria-labelledby="pepDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pepDetailModalLabel">Ficha de Pessoa Exposta Politicamente (PEP)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Detalhes do registro de PEP encontrado.</p>
+        <div id="pep-modal-content" class="ficha-modal-content"></div> 
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- LÓGICA PARA CHECKLIST AUTOMÁTICO E SINCRONIZAÇÃO DE NOTAS (sem alteração) ---
-    const mainUboCheck = document.getElementById('av_check_socios_ubos_ok');
-    const uboCheckOrigin = document.getElementById('av_check_socios_ubos_origin');
-    const allUboChecks = document.querySelectorAll('.socio-verificado-checkbox');
-    const allUboNotes = document.querySelectorAll('.socio-observacoes-textarea');
-    const mainNotesTextarea = document.querySelector('[name="av_anotacoes_internas"]');
-    
-    const UBO_NOTES_HEADER = "--- ANOTAÇÕES DOS SÓCIOS (Gerado automaticamente) ---\n";
-    const UBO_NOTES_FOOTER = "\n--- FIM DAS ANOTAÇÕES DOS SÓCIOS ---";
-    const MANUAL_NOTES_HEADER = "\n\n--- ANOTAÇÕES MANUAIS DO ANALISTA ---";
+    // --- Adicionar as variáveis do PHP ---
+    const ceisMatchFoundPJ = <?= json_encode($ceis_match_found_pj ?? false); ?>;
+    const ceisMatchFoundPF = <?= json_encode($ceis_match_found_pf ?? false); ?>;
+    const pepMatchFoundPF = <?= json_encode($pep_match_found_pf ?? false); ?>;
+    const cnepMatchFoundPJ = <?= json_encode($cnep_match_found_pj ?? false); ?>;
+    const cnepMatchFoundPF = <?= json_encode($cnep_match_found_pf ?? false); ?>;
 
-    function updateUboChecklist() {
-        if (allUboChecks.length === 0) return;
-        const allChecked = Array.from(allUboChecks).every(cb => cb.checked);
-        
-        if (allChecked && mainUboCheck.checked === false) {
-            mainUboCheck.checked = true;
-            if (uboCheckOrigin.value !== 'analyst') {
-                uboCheckOrigin.value = 'system';
-            }
-        } else if (!allChecked && mainUboCheck.checked === true && uboCheckOrigin.value === 'system') {
-            mainUboCheck.checked = false;
-        }
+    const checklistContainer = document.getElementById('checklist-icons-container');
+    const checklistConfig = [
+        { id: 'av_check_dados_empresa_ok', selector: '.dados-empresa-sub-check', label: 'Dados da Empresa' },
+        { id: 'av_check_perfil_negocio_ok', selector: '.perfil-negocio-sub-check', label: 'Perfil de Negócio' },
+        { id: 'av_check_socios_ubos_ok', selector: '.socio-verificado-checkbox', label: 'Sócios e Administradores' },
+        { id: 'av_check_documentos_ok', selector: '.documentos-sub-check', label: 'Documentos da Empresa' }
+    ];
+
+    function htmlspecialchars(str) {
+         if (typeof str !== 'string') return str;
+         return str.replace(/[&<>"']/g, function(m) {
+           return {
+             '&': '&amp;',
+             '<': '&lt;',
+             '>': '&gt;',
+             '"': '&quot;',
+             "'": '&#039;'
+           }[m];
+         });
     }
 
-    function syncUboNotes() {
-        let uboNotesContent = "";
-        allUboNotes.forEach(textarea => {
-            if (textarea.value.trim() !== "") {
-                const socioName = textarea.dataset.socioNome;
-                uboNotesContent += `Sócio "${socioName}": ${textarea.value.trim()}\n`;
+    const fDate = (value) => {
+        if (!value || value === '0000-00-00') return '<span class="text-muted">N/A</span>';
+        try {
+            const date = new Date(value + 'T00:00:00'); 
+            if (isNaN(date.getTime())) return htmlspecialchars(value); 
+            return date.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+        } catch (e) {
+            return htmlspecialchars(value);
+        }
+    };
+    const f = (value) => (value ? htmlspecialchars(value) : '<span class="text-muted">N/A</span>');
+
+    function updateAndRenderChecklist() {
+        const ceisIconPJ = ceisMatchFoundPJ ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
+        const ceisIconPF = ceisMatchFoundPF ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
+        const pepIconPF = pepMatchFoundPF ? 'fas fa-user-tie text-warning' : 'fas fa-check-circle text-success';
+        const cnepIconPJ = cnepMatchFoundPJ ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
+        const cnepIconPF = cnepMatchFoundPF ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
+
+        let html = `<h6 class="mb-3" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Sanções e Listas Públicas</h6>
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="checklist-item">
+                                <div class="checklist-item-icon"><i class="${ceisIconPJ}"></i></div>
+                                <span class="checklist-item-label" data-bs-toggle="tooltip" title="Cadastro de Empresas Inidôneas e Suspensas">Consulta CEIS <strong>PJ</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="checklist-item">
+                                <div class="checklist-item-icon"><i class="${ceisIconPF}"></i></div>
+                                <span class="checklist-item-label" data-bs-toggle="tooltip" title="Cadastro de Empresas Inidôneas e Suspensas">Consulta CEIS <strong>PF</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="checklist-item">
+                                <div class="checklist-item-icon"><i class="${cnepIconPJ}"></i></div>
+                                <span class="checklist-item-label" data-bs-toggle="tooltip" title="Cadastro Nacional de Empresas Punidas">Consulta CNEP <strong>PJ</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="checklist-item">
+                                <div class="checklist-item-icon"><i class="${cnepIconPF}"></i></div>
+                                <span class="checklist-item-label" data-bs-toggle="tooltip" title="Cadastro Nacional de Empresas Punidas">Consulta CNEP <strong>PF</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="checklist-item">
+                                <div class="checklist-item-icon"><i class="${pepIconPF}"></i></div>
+                                <span class="checklist-item-label" data-bs-toggle="tooltip" title="Pessoa Exposta Politicamente">Consulta Lista <strong>PEP</strong></span>
+                            </div>
+                        </div>
+                    </div>`;
+
+        html += `<h6 class="mb-3 mt-4" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Validações internas</h6>
+                 <div class="row">`;
+        
+        let col1Html = '<div class="col-lg-6">';
+        let col2Html = '<div class="col-lg-6">';
+
+        const itemsInternos = {};
+        checklistConfig.forEach(item => {
+            const mainCheck = document.getElementById(item.id);
+            const subChecks = document.querySelectorAll(item.selector);
+            
+            const total = subChecks.length;
+            const checkedCount = Array.from(subChecks).filter(cb => cb.checked).length;
+
+            let iconClass = 'fas fa-times-circle text-danger';
+            let allChecked = false;
+
+            if (total > 0) {
+                if (checkedCount === total) {
+                    iconClass = 'fas fa-check-circle text-success';
+                    allChecked = true;
+                } else if (checkedCount > 0) {
+                    iconClass = 'fas fa-exclamation-triangle text-warning';
+                }
+            } else {
+                 if (mainCheck && mainCheck.checked) {
+                     iconClass = 'fas fa-check-circle text-success';
+                     allChecked = true;
+                 }
             }
+            
+            if (mainCheck) {
+                if (total > 0) {
+                    mainCheck.checked = allChecked;
+                }
+            }
+
+            itemsInternos[item.label] = `<div class="checklist-item">
+                                            <div class="checklist-item-icon"><i class="${iconClass}"></i></div>
+                                            <span class="checklist-item-label">${item.label}</span>
+                                         </div>`;
         });
 
-        let currentMainNotes = mainNotesTextarea.value;
-        let manualNotes = "";
+        if (itemsInternos['Dados da Empresa']) col1Html += itemsInternos['Dados da Empresa'];
+        if (itemsInternos['Perfil de Negócio']) col1Html += itemsInternos['Perfil de Negócio'];
+        if (itemsInternos['Sócios e Administradores']) col2Html += itemsInternos['Sócios e Administradores'];
+        if (itemsInternos['Documentos da Empresa']) col2Html += itemsInternos['Documentos da Empresa']; 
 
-        const manualNotesIndex = currentMainNotes.indexOf(MANUAL_NOTES_HEADER);
-        if (manualNotesIndex !== -1) {
-            manualNotes = currentMainNotes.substring(manualNotesIndex + MANUAL_NOTES_HEADER.length).trim();
-        } else {
-            const autoNotesStartIndex = currentMainNotes.indexOf(UBO_NOTES_HEADER);
-            const autoNotesEndIndex = currentMainNotes.indexOf(UBO_NOTES_FOOTER);
-            if (autoNotesStartIndex !== -1 && autoNotesEndIndex !== -1) {
-                manualNotes = (currentMainNotes.substring(0, autoNotesStartIndex) + currentMainNotes.substring(autoNotesEndIndex + UBO_NOTES_FOOTER.length)).trim();
-            } else {
-                manualNotes = currentMainNotes;
-            }
-        }
-
-        let newMainNotes = "";
-        if (uboNotesContent) {
-            newMainNotes = UBO_NOTES_HEADER + uboNotesContent.trim() + UBO_NOTES_FOOTER;
-        }
-
-        if (manualNotes) {
-            newMainNotes += (newMainNotes ? MANUAL_NOTES_HEADER + "\n" : "") + manualNotes;
-        } else if (newMainNotes) {
-            newMainNotes += MANUAL_NOTES_HEADER;
-        }
+        col1Html += '</div>';
+        col2Html += '</div>';
+        html += col1Html + col2Html + '</div>'; 
         
-        mainNotesTextarea.value = newMainNotes;
+        if (checklistContainer) {
+            checklistContainer.innerHTML = html;
+        }
     }
 
-    // Adiciona os listeners
-    allUboChecks.forEach(checkbox => {
-        checkbox.addEventListener('change', updateUboChecklist);
+    document.body.addEventListener('change', function(event) {
+        if (event.target.matches('.dados-empresa-sub-check, .perfil-negocio-sub-check, .socio-verificado-checkbox, .documentos-sub-check, #av_check_dados_empresa_ok, #av_check_perfil_negocio_ok, #av_check_documentos_ok')) {
+            updateAndRenderChecklist();
+        }
     });
 
-    allUboNotes.forEach(textarea => {
-        textarea.addEventListener('input', syncUboNotes);
+    const uboCheckOrigin = document.getElementById('av_check_socios_ubos_origin');
+    document.body.addEventListener('click', function(event) {
+        if (event.target.matches('.socio-verificado-checkbox')) {
+            if (uboCheckOrigin) uboCheckOrigin.value = 'analyst'; 
+            updateAndRenderChecklist();
+        }
     });
 
-    mainUboCheck.addEventListener('click', () => {
-        // Qualquer interação manual define a origem como 'analyst'
-        uboCheckOrigin.value = 'analyst';
-    });
+    // Renderiza o estado inicial do checklist
+    updateAndRenderChecklist();
 
-    // Executa as funções na inicialização para garantir o estado correto
-    updateUboChecklist();
-    syncUboNotes();
-
-    // --- CORREÇÃO: LÓGICA DO MODAL DE DETALHES DO LOG ---
+    // --- LÓGICA DO MODAL DE DETALHES DO LOG ---
     const logDetailModal = document.getElementById('logDetailModal');
     if (logDetailModal) {
         logDetailModal.addEventListener('show.bs.modal', function (event) {
@@ -447,6 +974,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const keyToNameMap = {
                 'status_caso': 'Status do Caso',
+                'av_check_ceis_ok': 'Check: Consulta CEIS (PJ)',
+                'av_check_ceis_pf_ok': 'Check: Consulta CEIS (PF)',
+                'av_check_cnep_ok': 'Check: Consulta CNEP (PJ)',
+                'av_check_cnep_pf_ok': 'Check: Consulta CNEP (PF)',
                 'av_check_dados_empresa_ok': 'Check: Dados da Empresa',
                 'av_check_perfil_negocio_ok': 'Check: Perfil de Negócio',
                 'av_check_socios_ubos_ok': 'Check: Sócios (UBOs)',
@@ -459,10 +990,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 'av_risco_midia_pep': 'Risco: Mídia / PEP',
                 'av_risco_final': 'Risco Final',
                 'av_justificativa_risco': 'Justificativa do Risco',
-                'av_info_pendencia': 'Informações de Pendência'
+                'av_info_pendencia': 'Informações de Pendência',
+                'av_obs_dados_empresa': 'Obs: Dados da Empresa',
+                'av_obs_perfil_negocio': 'Obs: Perfil de Negócio',
+                'av_obs_documentos': 'Obs: Documentos',
+                'av_check_perfil_atividade': 'Sub-Check: Atividade',
+                'av_check_perfil_motivo': 'Sub-Check: Motivo',
+                'av_check_perfil_fluxo': 'Sub-Check: Fluxo',
+                'av_check_perfil_volume': 'Sub-Check: Volume',
+                'av_check_perfil_origem': 'Sub-Check: Origem',
+                'av_check_doc_contrato_social': 'Sub-Check: Contrato Social',
+                'av_check_doc_ultima_alteracao': 'Sub-Check: Última Alteração',
+                'av_check_doc_cartao_cnpj': 'Sub-Check: Cartão CNPJ',
+                'av_check_doc_balanco': 'Sub-Check: Balanço',
+                'av_check_doc_balancete': 'Sub-Check: Balancete',
+                'av_check_doc_dirpj': 'Sub-Check: DIRPJ'
             };
 
-            // Processa os campos principais
             for (const key in keyToNameMap) {
                 if (currentSnapshot.hasOwnProperty(key)) {
                     let currentValue = currentSnapshot[key];
@@ -475,40 +1019,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     let rowClass = '';
                     if (previousSnapshot) {
-                        // Compara os valores como strings para evitar problemas de tipo (ex: 1 vs "1")
                         if (String(currentValue) !== String(previousValue)) {
-                            rowClass = 'table-warning'; // Amarelo para alteração
+                            rowClass = 'table-warning';
                         }
                     } else {
-                        // Se for o primeiro log, destaca qualquer campo que tenha valor
                         if (currentValue !== null && currentValue !== '' && currentValue !== 0) {
-                            rowClass = 'table-info'; // Azul para novos valores
+                            rowClass = 'table-info';
                         }
                     }
 
                     const displayName = keyToNameMap[key];
-                    const row = `<tr class="${rowClass}"><td><strong>${displayName}</strong></td><td>${displayValue}</td></tr>`;
+                    const row = `<tr class="${rowClass}"><td><strong>${displayName}</strong></td><td>${htmlspecialchars(displayValue)}</td></tr>`;
                     tbody.innerHTML += row;
                 }
             }
 
-            // Processa a análise dos sócios separadamente
             if (currentSnapshot.analise_socios) {
                 for (const socio_id in currentSnapshot.analise_socios) {
                     const socio_analise = currentSnapshot.analise_socios[socio_id];
                     const prev_socio_analise = (previousSnapshot && previousSnapshot.analise_socios) ? (previousSnapshot.analise_socios[socio_id] || null) : null;
 
-                    // Observações do Sócio
                     let obs_rowClass = '';
                     if (prev_socio_analise && String(socio_analise.observacoes) !== String(prev_socio_analise.observacoes)) {
                         obs_rowClass = 'table-warning';
                     } else if (!prev_socio_analise && socio_analise.observacoes) {
                         obs_rowClass = 'table-info';
                     }
-                    const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${socio_analise.observacoes || 'N/A'}</td></tr>`;
+                    const obs_row = `<tr class="${obs_rowClass}"><td><strong>Análise Sócio ${socio_id} - Observações</strong></td><td>${htmlspecialchars(socio_analise.observacoes || 'N/A')}</td></tr>`;
                     tbody.innerHTML += obs_row;
 
-                    // Verificação do Sócio
                     let ver_rowClass = '';
                     if (prev_socio_analise && String(socio_analise.verificado) !== String(prev_socio_analise.verificado)) {
                         ver_rowClass = 'table-warning';
@@ -521,6 +1060,214 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // --- LÓGICA DO MODAL CEIS ---
+    const ceisDetailModal = document.getElementById('ceisDetailModal');
+    if (ceisDetailModal) {
+        ceisDetailModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const sancaoJson = button.getAttribute('data-sancao-json');
+            const sancao = JSON.parse(sancaoJson);
+            const container = ceisDetailModal.querySelector('#ceis-modal-content');
+
+            const fTipoPessoa = (value) => {
+                if (value === 'F') return 'Física';
+                if (value === 'J') return 'Jurídica';
+                return f(value);
+            };
+
+            let html = '<dl class="row">';
+            html += `<dt class="col-sm-4">Nome Sancionado</dt><dd class="col-sm-8">${f(sancao.nome_sancionado)}</dd>`;
+            html += `<dt class="col-sm-4">Razão Social</dt><dd class="col-sm-8">${f(sancao.razao_social)}</dd>`;
+            html += `<dt class="col-sm-4">Nome Fantasia</dt><dd class="col-sm-8">${f(sancao.nome_fantasia)}</dd>`;
+            html += `<dt class="col-sm-4">CPF/CNPJ Sancionado</dt><dd class="col-sm-8">${f(sancao.cpf_cnpj_sancionado)}</dd>`;
+            html += `<dt class="col-sm-4">Tipo Pessoa</dt><dd class="col-sm-8">${fTipoPessoa(sancao.tipo_pesso)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Categoria da Sanção</dt><dd class="col-sm-8">${f(sancao.categoria_sancao)}</dd>`;
+            html += `<dt class="col-sm-4">Data Início Sanção</dt><dd class="col-sm-8">${fDate(sancao.data_inicio_sancao)}</dd>`;
+            html += `<dt class="col-sm-4">Data Fim Sanção</dt><dd class="col-sm-8">${fDate(sancao.data_final_sancao)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Órgão Sancionador</dt><dd class="col-sm-8">${f(sancao.orgao_sancionador)}</dd>`;
+            html += `<dt class="col-sm-4">UF do Órgão</dt><dd class="col-sm-8">${f(sancao.uf_orgao_sancionador)}</dd>`;
+            html += `<dt class="col-sm-4">Esfera do Órgão</dt><dd class="col-sm-8">${f(sancao.esfera_orgao_sancionador)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Nº do Processo</dt><dd class="col-sm-8">${f(sancao.numero_processo)}</dd>`;
+            html += `<dt class="col-sm-4">Fundamentação Legal</dt><dd class="col-sm-8"><small>${f(sancao.fundamentacao_legal)}</small></dd>`;
+            html += `<dt class="col-sm-4">Observações</dt><dd class="col-sm-8"><small>${f(sancao.observacoes)}</small></dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Data Publicação</dt><dd class="col-sm-8">${fDate(sancao.data_publicacao)}</dd>`;
+            html += `<dt class="col-sm-4">Publicação</dt><dd class="col-sm-8">${f(sancao.publicacao)}</dd>`;
+            html += `<dt class="col-sm-4">Detalhamento</dt><dd class="col-sm-8">${f(sancao.detalhamento_publicaca)}</dd>`;
+            html += `<dt class="col-sm-4">Data Trânsito Julgado</dt><dd class="col-sm-8">${fDate(sancao.data_transito_julgad)}</dd>`;
+            html += '</dl>';
+
+            container.innerHTML = html;
+        });
+    }
+
+    // --- LÓGICA DO MODAL CNEP ---
+    const cnepDetailModal = document.getElementById('cnepDetailModal');
+    if (cnepDetailModal) {
+        cnepDetailModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const sancaoJson = button.getAttribute('data-sancao-json');
+            const sancao = JSON.parse(sancaoJson);
+            const container = cnepDetailModal.querySelector('#cnep-modal-content');
+
+            const fTipoPessoa = (value) => {
+                if (value === 'F') return 'Física';
+                if (value === 'J') return 'Jurídica';
+                return f(value);
+            };
+            
+            let html = '<dl class="row">';
+            html += `<dt class="col-sm-4">Nome Sancionado</dt><dd class="col-sm-8">${f(sancao.nome_sancionado)}</dd>`;
+            html += `<dt class="col-sm-4">Razão Social</dt><dd class="col-sm-8">${f(sancao.razao_social)}</dd>`;
+            html += `<dt class="col-sm-4">Nome Fantasia</dt><dd class="col-sm-8">${f(sancao.nome_fantasia)}</dd>`;
+            html += `<dt class="col-sm-4">CPF/CNPJ Sancionado</dt><dd class="col-sm-8">${f(sancao.cpf_cnpj_sancionado)}</dd>`;
+            html += `<dt class="col-sm-4">Tipo Pessoa</dt><dd class="col-sm-8">${fTipoPessoa(sancao.tipo_pesso)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Categoria da Sanção</dt><dd class="col-sm-8">${f(sancao.categoria_sancao)}</dd>`;
+            html += `<dt class="col-sm-4">Data Início Sanção</dt><dd class="col-sm-8">${fDate(sancao.data_inicio_sancao)}</dd>`;
+            html += `<dt class="col-sm-4">Data Fim Sanção</dt><dd class="col-sm-8">${fDate(sancao.data_final_sancao)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Órgão Sancionador</dt><dd class="col-sm-8">${f(sancao.orgao_sancionador)}</dd>`;
+            html += `<dt class="col-sm-4">UF do Órgão</dt><dd class="col-sm-8">${f(sancao.uf_orgao_sancionador)}</dd>`;
+            html += `<dt class="col-sm-4">Esfera do Órgão</dt><dd class="col-sm-8">${f(sancao.esfera_orgao_sancionador)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Nº do Processo</dt><dd class="col-sm-8">${f(sancao.numero_processo)}</dd>`;
+            html += `<dt class="col-sm-4">Fundamentação Legal</dt><dd class="col-sm-8"><small>${f(sancao.fundamentacao_legal)}</small></dd>`;
+            html += `<dt class="col-sm-4">Observações</dt><dd class="col-sm-8"><small>${f(sancao.observacoes)}</small></dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Data Publicação</dt><dd class="col-sm-8">${fDate(sancao.data_publicacao)}</dd>`;
+            html += `<dt class="col-sm-4">Publicação</dt><dd class="col-sm-8">${f(sancao.publicacao)}</dd>`;
+            html += `<dt class="col-sm-4">Detalhamento</dt><dd class="col-sm-8">${f(sancao.detalhamento_publicaca)}</dd>`;
+            html += `<dt class="col-sm-4">Data Trânsito Julgado</dt><dd class="col-sm-8">${fDate(sancao.data_transito_julgad)}</dd>`;
+            html += '</dl>';
+
+            container.innerHTML = html;
+        });
+    }
+
+    // --- LÓGICA DO MODAL PEP ---
+    const pepDetailModal = document.getElementById('pepDetailModal');
+    if (pepDetailModal) {
+        pepDetailModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const pepJson = button.getAttribute('data-pep-json');
+            const pep = JSON.parse(pepJson);
+            const container = pepDetailModal.querySelector('#pep-modal-content');
+
+            let html = '<dl class="row">';
+            html += `<dt class="col-sm-4">Nome PEP</dt><dd class="col-sm-8">${f(pep.nome_pep)}</dd>`;
+            html += `<dt class="col-sm-4">CPF</dt><dd class="col-sm-8">${f(pep.cpf)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Sigla da Função</dt><dd class="col-sm-8">${f(pep.sigla_funcao)}</dd>`;
+            html += `<dt class="col-sm-4">Descrição da Função</dt><dd class="col-sm-8">${f(pep.descricao_funcao)}</dd>`;
+            html += `<dt class="col-sm-4">Nível da Função</dt><dd class="col-sm-8">${f(pep.nivel_funcao)}</dd>`;
+            html += `<dt class="col-sm-4">Nome do Órgão</dt><dd class="col-sm-8">${f(pep.nome_orgao)}</dd>`;
+            html += '<dd class="col-12"><hr class="my-2"></dd>';
+            html += `<dt class="col-sm-4">Data Início Exercício</dt><dd class="col-sm-8">${fDate(pep.data_inicio_exercicio)}</dd>`;
+            html += `<dt class="col-sm-4">Data Fim Exercício</dt><dd class="col-sm-8">${fDate(pep.data_fim_exercicio)}</dd>`;
+            html += `<dt class="col-sm-4">Data Fim Carência</dt><dd class="col-sm-8">${fDate(pep.data_fim_carencia)}</dd>`;
+            html += '</dl>';
+
+            container.innerHTML = html;
+        });
+    }
+
+
+    // --- LÓGICA DE SINCRONIZAÇÃO DE OBSERVAÇÕES ---
+    const mainNotesTextarea = document.querySelector('[name="av_anotacoes_internas"]');
+    const allObservationFields = document.querySelectorAll('.observation-field, .socio-observacoes-textarea');
+
+    const AUTO_NOTES_HEADER = "--- OBSERVAÇÕES AUTOMÁTICAS DAS SEÇÕES ---\n";
+    const AUTO_NOTES_FOOTER = "\n--- FIM DAS OBSERVAÇÕES AUTOMÁTICAS ---";
+    const MANUAL_NOTES_HEADER = "\n\n--- ANOTAÇÕES MANUAIS DO ANALISTA ---";
+
+    function syncAllObservations() {
+        if (!mainNotesTextarea) return; 
+        let autoNotesContent = "";
+        
+        allObservationFields.forEach(textarea => {
+            if (textarea.value.trim() !== "") {
+                const label = textarea.dataset.label || `Sócio "${textarea.dataset.socioNome || 'ID ' + textarea.id}"`;
+                autoNotesContent += `${label}: ${textarea.value.trim()}\n`;
+            }
+        });
+
+        let currentMainNotes = mainNotesTextarea.value;
+        let manualNotes = "";
+
+        const manualNotesIndex = currentMainNotes.indexOf(MANUAL_NOTES_HEADER);
+        if (manualNotesIndex !== -1) {
+            manualNotes = currentMainNotes.substring(manualNotesIndex + MANUAL_NOTES_HEADER.length).trim();
+        } else {
+            const autoNotesStartIndex = currentMainNotes.indexOf(AUTO_NOTES_HEADER);
+            if (autoNotesStartIndex !== -1) {
+                const autoNotesEndIndex = currentMainNotes.indexOf(AUTO_NOTES_FOOTER);
+                if (autoNotesEndIndex !== -1) {
+                    manualNotes = (currentMainNotes.substring(0, autoNotesStartIndex) + currentMainNotes.substring(autoNotesEndIndex + AUTO_NOTES_FOOTER.length)).trim();
+                } else {
+                     manualNotes = currentMainNotes.substring(0, autoNotesStartIndex).trim();
+                }
+            } else {
+                manualNotes = currentMainNotes;
+            }
+        }
+
+        let newMainNotes = "";
+        if (autoNotesContent) {
+            newMainNotes = AUTO_NOTES_HEADER + autoNotesContent.trim() + AUTO_NOTES_FOOTER;
+        }
+
+        if (manualNotes) {
+            newMainNotes += (newMainNotes ? MANUAL_NOTES_HEADER + "\n" : "") + manualNotes;
+        } else if (newMainNotes) {
+            newMainNotes += MANUAL_NOTES_HEADER;
+        }
+        
+        mainNotesTextarea.value = newMainNotes;
+    }
+
+    allObservationFields.forEach(textarea => {
+        textarea.addEventListener('input', syncAllObservations);
+    });
+
+    syncAllObservations(); // Sincroniza ao carregar a página
+
+    // --- LÓGICA DE PENDÊNCIA ---
+    const pendenciaContainer = document.getElementById('pendencia_container');
+    const infoPendenciaTextarea = document.getElementById('info_pendencia');
+    const radioDecisao = document.querySelectorAll('input[name="status_caso"]');
+
+    function togglePendencia(status) {
+        if (!pendenciaContainer || !infoPendenciaTextarea) return; 
+
+        if (status === 'Pendenciado') {
+            pendenciaContainer.style.display = 'block';
+            infoPendenciaTextarea.required = true;
+        } else {
+            pendenciaContainer.style.display = 'none';
+            infoPendenciaTextarea.required = false;
+        }
+    }
+
+    radioDecisao.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            togglePendencia(e.target.value);
+        });
+        if (radio.checked) {
+            togglePendencia(radio.value);
+        }
+    });
+
+    // --- INICIALIZADOR DE TOOLTIPS ---
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+
 });
 </script>
 
