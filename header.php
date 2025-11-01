@@ -95,10 +95,10 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
         
         <!-- Sidebar -->
         <aside class='sidebar' id='sidebar'>
-            <div class='sidebar-header'>
-                 <a href='<?= $path_prefix ?>dashboard.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='sidebar-logo'></a>
+          <div class='sidebar-header'>
+              <a href='<?= $path_prefix ?>dashboard_analytics.php'><img src='<?= $logo_url_final ?>' alt='Logo da Empresa' class='sidebar-logo'></a>
                  <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Minimizar Sidebar">
-                    <span class="collapse-icon">◀</span>
+                    <i class="bi bi-arrow-bar-left collapse-icon"></i>
                  </button>
             </div>
             <div class='sidebar-user'>
@@ -110,9 +110,24 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
                 // Menu do Superadmin
                 if ($is_superadmin): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                    <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
+                    
+                        <div class="sidebar-section">
+                            <button class="sidebar-section-header">
+                                <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
+                                <i class="bi bi-chevron-down chevron"></i>
+                            </button>
+                            <div class="sidebar-section-content">
+                                <a href="<?= $path_prefix ?>consulta_cnpj.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
+                                    <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
+                                </a>
+                                <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                    <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                                </a>
+                            </div>
+                        </div>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
@@ -120,9 +135,6 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
-                            </a>
                             <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
                                 <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
                             </a>
@@ -159,9 +171,24 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
                 <?php // Menu do Admin
                 elseif ($is_admin): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                    <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>consulta_cnpj.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                            </a>
+                        </div>
+                    </div>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
@@ -169,9 +196,6 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
-                            </a>
                             <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
                                 <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
                             </a>
@@ -203,9 +227,24 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
                 <?php // Menu do Analista
                 elseif ($is_analista): ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                    <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>consulta_cnpj.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                            </a>
+                        </div>
+                    </div>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
@@ -228,12 +267,25 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
                 <?php // Menu Padrão (outros usuários logados)
                 else: ?>
-                    <a href="<?= $path_prefix ?>dashboard.php" class="sidebar-nav-link <?= ($current_page_base == 'dashboard.php') ? 'active' : '' ?>">
+                    <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
-                    <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                        <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
-                    </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>consulta_cnpj.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
+                            </a>
+                        </div>
+                    </div>
+                    
                     <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
                         <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
                     </a>
@@ -251,7 +303,7 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
     <?php else: // Layout para páginas públicas (incluindo portal do cliente) ?>
     <div class="public-page-container">
         <header class='public-header'>
-            <nav class='navbar navbar-expand-lg navbar-light bg-white border-bottom'>
+            <nav class='navbar navbar-expand-lg navbar-light bg-white border-bottom' aria-label="Navegação pública">
                 <div class="container">
                     <a class='navbar-brand' href="cliente_login.php">
                          <img src='<?= $logo_url_final ?>' alt='Logo' style='height: 40px;'>

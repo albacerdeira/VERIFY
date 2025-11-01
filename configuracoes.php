@@ -27,17 +27,44 @@ $success = null;
 // Lógica de decisão de qual empresa editar (deve vir antes do POST)
 $empresa_id_para_editar = null;
 if ($is_superadmin && isset($_GET['id'])) {
-    $empresa_id_para_editar = $_GET['id'];
-} else if ($is_admin && isset($_SESSION['empresa_id'])) {
-    $empresa_id_para_editar = $_SESSION['empresa_id'];
+    $empresa_id_para_editar = (int)$_GET['id'];
+} else if ($is_admin) {
+    // Admin sempre edita sua própria empresa
+    $empresa_id_para_editar = (int)($_SESSION['empresa_id'] ?? 0);
 }
+
+// DEBUG: Remover depois
+error_log("DEBUG configuracoes.php: empresa_id_para_editar = " . var_export($empresa_id_para_editar, true));
+error_log("DEBUG configuracoes.php: SESSION empresa_id = " . var_export($_SESSION['empresa_id'] ?? 'NOT SET', true));
+error_log("DEBUG configuracoes.php: is_admin = " . var_export($is_admin, true));
+error_log("DEBUG configuracoes.php: is_superadmin = " . var_export($is_superadmin, true));
 
 // Carrega as configurações atuais ANTES de processar o POST para ter o estado pré-mudança
 $config_atual = null;
-if ($empresa_id_para_editar) {
+if ($empresa_id_para_editar && $empresa_id_para_editar > 0) {
     $stmt_current = $pdo->prepare("SELECT * FROM configuracoes_whitelabel WHERE empresa_id = ?");
     $stmt_current->execute([$empresa_id_para_editar]);
     $config_atual = $stmt_current->fetch(PDO::FETCH_ASSOC);
+    
+    // Se não existe registro, cria um novo
+    if (!$config_atual) {
+        $stmt_empresa = $pdo->prepare("SELECT nome FROM empresas WHERE id = ?");
+        $stmt_empresa->execute([$empresa_id_para_editar]);
+        $empresa = $stmt_empresa->fetch(PDO::FETCH_ASSOC);
+        
+        if ($empresa) {
+            // Cria registro inicial
+            $stmt_insert = $pdo->prepare(
+                "INSERT INTO configuracoes_whitelabel (empresa_id, nome_empresa, logo_url, cor_variavel) 
+                 VALUES (?, ?, 'imagens/verify-kyc.png', '#4f46e5')"
+            );
+            $stmt_insert->execute([$empresa_id_para_editar, $empresa['nome']]);
+            
+            // Recarrega
+            $stmt_current->execute([$empresa_id_para_editar]);
+            $config_atual = $stmt_current->fetch(PDO::FETCH_ASSOC);
+        }
+    }
 }
 
 // Lógica de processamento do formulário (POST)
@@ -123,11 +150,30 @@ if ($is_superadmin && !$empresa_id_para_editar) {
     });
     </script>
 <?php
-} elseif ($empresa_id_para_editar) {
+} elseif ($empresa_id_para_editar && $empresa_id_para_editar > 0) {
     // Recarrega os dados da empresa caso tenham sido atualizados
     $stmt = $pdo->prepare("SELECT * FROM configuracoes_whitelabel WHERE empresa_id = ?");
     $stmt->execute([$empresa_id_para_editar]);
     $config = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Se não encontrou, tenta criar
+    if (!$config) {
+        $stmt_empresa = $pdo->prepare("SELECT nome FROM empresas WHERE id = ?");
+        $stmt_empresa->execute([$empresa_id_para_editar]);
+        $empresa = $stmt_empresa->fetch(PDO::FETCH_ASSOC);
+        
+        if ($empresa) {
+            $stmt_insert = $pdo->prepare(
+                "INSERT INTO configuracoes_whitelabel (empresa_id, nome_empresa, logo_url, cor_variavel) 
+                 VALUES (?, ?, 'imagens/verify-kyc.png', '#4f46e5')"
+            );
+            $stmt_insert->execute([$empresa_id_para_editar, $empresa['nome']]);
+            
+            // Recarrega
+            $stmt->execute([$empresa_id_para_editar]);
+            $config = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
 ?>
     <div class="container-fluid">
         <h2 class="mb-4">Configurações para: <?= htmlspecialchars($config['nome_empresa'] ?? 'Nova Empresa') ?></h2>

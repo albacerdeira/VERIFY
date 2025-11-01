@@ -24,15 +24,33 @@
         
         // Colapso da Sidebar (Desktop)
         if (sidebarCollapseBtn && sidebar) {
+            const collapseIcon = sidebarCollapseBtn.querySelector('.collapse-icon');
+            
             // Restaura estado do localStorage
             const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
             if (isCollapsed) {
                 sidebar.classList.add('collapsed');
+                if (collapseIcon) {
+                    collapseIcon.classList.remove('bi-arrow-bar-left');
+                    collapseIcon.classList.add('bi-arrow-bar-right');
+                }
             }
             
             sidebarCollapseBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 sidebar.classList.toggle('collapsed');
+                
+                // Troca o ícone
+                if (collapseIcon) {
+                    if (sidebar.classList.contains('collapsed')) {
+                        collapseIcon.classList.remove('bi-arrow-bar-left');
+                        collapseIcon.classList.add('bi-arrow-bar-right');
+                    } else {
+                        collapseIcon.classList.remove('bi-arrow-bar-right');
+                        collapseIcon.classList.add('bi-arrow-bar-left');
+                    }
+                }
+                
                 localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
             });
         }

@@ -19,9 +19,9 @@ body, html { margin: 0; padding: 0; font-family: 'Poppins', sans-serif; backgrou
 .sidebar-header { padding: 20px; border-bottom: 1px solid #e9ecef; text-align: center; display: flex; align-items: center; justify-content: space-between; position: relative; }
 .sidebar-logo { height: 45px; max-width: 100%; transition: opacity 0.3s; }
 .sidebar.collapsed .sidebar-logo { opacity: 0; width: 0; }
-.sidebar-collapse-btn { background: transparent; border: none; cursor: pointer; padding: 5px; transition: transform 0.3s; font-size: 1.2rem; color: #6c757d; }
+.sidebar-collapse-btn { background: transparent; border: none; cursor: pointer; padding: 5px; transition: transform 0.3s; color: #6c757d; }
+.sidebar-collapse-btn .collapse-icon { font-size: 1.5rem; }
 .sidebar-collapse-btn:hover { color: var(--primary-color); }
-.sidebar.collapsed .sidebar-collapse-btn .collapse-icon { transform: rotate(180deg); }
 .sidebar-user { padding: 15px 20px; background: linear-gradient(135deg, var(--primary-color) 0%, color-mix(in srgb, var(--primary-color) 80%, #000) 100%); color: white; text-align: center; transition: all 0.3s; white-space: nowrap; }
 .sidebar.collapsed .sidebar-user { padding: 10px 5px; }
 .sidebar-user-name { display: block; font-weight: 600; font-size: 0.95rem; margin-bottom: 3px; transition: opacity 0.3s; }
@@ -47,7 +47,7 @@ body, html { margin: 0; padding: 0; font-family: 'Poppins', sans-serif; backgrou
 .sidebar-section.open .sidebar-section-header .chevron { transform: rotate(180deg); }
 .sidebar-section-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
 .sidebar-section.open .sidebar-section-content { max-height: 500px; }
-.sidebar-nav-link.sidebar-sub-link { padding-left: 56px; font-size: 0.85rem; }
+.sidebar-nav-link.sidebar-sub-link { padding-left: 27px; font-size: 0.85rem; }
 .sidebar.collapsed .sidebar-section { margin: 4px 8px; }
 .sidebar.collapsed .sidebar-section-header { justify-content: center; padding: 12px; }
 .sidebar.collapsed .sidebar-section-header .chevron { display: none; }
