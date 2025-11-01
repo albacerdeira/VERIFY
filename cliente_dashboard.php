@@ -33,20 +33,26 @@ if (isset($pdo)) {
         if ($submission) {
             // Mapeia o status do banco para um texto mais amigável
             switch ($submission['status']) {
-                case 'em_preenchimento':
+                case 'Em Preenchimento':
                     $kyc_status = 'Em Preenchimento';
                     break;
-                case 'enviado':
+                case 'Novo Registro':
+                    $kyc_status = 'Aguardando Análise';
+                    break;
+                case 'Em Análise':
                     $kyc_status = 'Em Análise';
                     break;
-                case 'aprovado':
+                case 'Pendenciado':
+                    $kyc_status = 'Pendências Identificadas';
+                    break;
+                case 'Aprovado':
                     $kyc_status = 'Aprovado';
                     break;
-                case 'reprovado':
-                    $kyc_status = 'Em Análise';/* reprovado */
+                case 'Reprovado':
+                    $kyc_status = 'Reprovado';
                     break;
                 default:
-                    $kyc_status = ucfirst(str_replace('_', ' ', $submission['status']));
+                    $kyc_status = htmlspecialchars($submission['status']);
                     break;
             }
         }

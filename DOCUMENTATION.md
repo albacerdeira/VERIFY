@@ -151,3 +151,255 @@ A segurança é aplicada em dois níveis:
     <?php endif; ?>
     // ... outros links ...
     ```
+
+---
+
+## 5. Guia de Padronização Visual e UX
+
+### a. Sistema de Ícones
+
+O sistema utiliza **Bootstrap Icons** de forma padronizada em toda a aplicação.
+
+**Ícones por Contexto:**
+```html
+<!-- Status de KYC -->
+<i class="bi bi-check-circle-fill"></i>      <!-- Aprovado -->
+<i class="bi bi-x-circle-fill"></i>          <!-- Reprovado -->
+<i class="bi bi-clock-history"></i>          <!-- Em Análise -->
+<i class="bi bi-exclamation-circle-fill"></i> <!-- Pendenciado -->
+<i class="bi bi-pencil-square"></i>          <!-- Em Preenchimento -->
+<i class="bi bi-file-earmark-plus"></i>      <!-- Novo Registro -->
+
+<!-- Alertas de Compliance -->
+<i class="bi bi-exclamation-triangle-fill"></i>    <!-- CEIS -->
+<i class="bi bi-exclamation-diamond-fill"></i>     <!-- CNEP -->
+<i class="bi bi-person-fill-exclamation"></i>      <!-- PEP -->
+
+<!-- Navegação e Ações -->
+<i class="bi bi-search"></i>                 <!-- Consulta -->
+<i class="bi bi-file-earmark-pdf"></i>       <!-- PDF -->
+<i class="bi bi-file-earmark-image"></i>     <!-- Imagem -->
+<i class="bi bi-person-badge"></i>           <!-- Cliente/KYC -->
+```
+
+### b. Paleta de Cores por Status
+
+**Status de KYC (Badges):**
+
+| Status | Cor | Classe Bootstrap | Hex | Uso |
+|--------|-----|-----------------|-----|-----|
+| **Aprovado** | 🟢 Verde | `bg-success` | `#198754` | Processo concluído com sucesso |
+| **Reprovado** | 🔴 Vermelho | `bg-danger` | `#dc3545` | Processo rejeitado |
+| **Em Análise** | 🔵 Azul | `bg-info` | `#0dcaf0` | Em avaliação pelo analista |
+| **Pendenciado** | 🟡 Amarelo | `bg-warning text-dark` | `#ffc107` | Aguardando ação/documentos |
+| **Em Preenchimento** | ⚪ Cinza | `bg-secondary` | `#6c757d` | Cliente ainda preenchendo (sem ação) |
+| **Novo Registro** | 🔵 Azul Escuro | `bg-primary` | `#0d6efd` | Novo cadastro enviado para análise |
+
+**Alertas de Compliance:**
+
+| Tipo | Cor | Classe/Style | Hex | Descrição |
+|------|-----|-------------|-----|-----------|
+| **CEIS** | 🔴 Vermelho | `text-danger` / `bg-danger` | `#dc3545` | Sanções administrativas |
+| **CNEP** | 🟡 Amarelo | `text-warning` / `bg-warning` | `#ffc107` | Registro de penalidades |
+| **PEP** | 💜 Roxo | `style="color: #6f42c1"` | `#6f42c1` | Pessoa Exposta Politicamente |
+
+### c. Componentes de Badge com Ícone
+
+**Padrão de Implementação:**
+
+```php
+<?php
+// Função para determinar classe e ícone do badge
+function getBadgeInfo($status) {
+    switch ($status) {
+        case 'Aprovado':
+            return ['class' => 'bg-success', 'icon' => 'bi-check-circle-fill'];
+        case 'Reprovado':
+            return ['class' => 'bg-danger', 'icon' => 'bi-x-circle-fill'];
+        case 'Em Análise':
+            return ['class' => 'bg-info', 'icon' => 'bi-clock-history'];
+        case 'Pendenciado':
+            return ['class' => 'bg-warning text-dark', 'icon' => 'bi-exclamation-circle-fill'];
+        case 'Em Preenchimento':
+            return ['class' => 'bg-secondary', 'icon' => 'bi-pencil-square'];
+        case 'Novo Registro':
+            return ['class' => 'bg-primary', 'icon' => 'bi-file-earmark-plus'];
+        default:
+            return ['class' => 'bg-light text-dark', 'icon' => 'bi-question-circle'];
+    }
+}
+
+$badge = getBadgeInfo($caso['status']);
+?>
+
+<!-- Renderização do Badge -->
+<span class="badge <?= $badge['class'] ?>">
+    <i class="bi <?= $badge['icon'] ?> me-1"></i>
+    <?= htmlspecialchars($caso['status']) ?>
+</span>
+```
+
+### d. Alertas em Accordion (Padrão Visual Leve)
+
+Os alertas de sanção (CEIS, CNEP, PEP) utilizam accordions com **fundo branco** e bordas/ícones coloridos:
+
+```html
+<!-- Exemplo: Accordion de PEP -->
+<div class="accordion-item" style="border-color: #6f42c1;">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed bg-white" 
+                style="border-left: 4px solid #6f42c1;"
+                data-bs-toggle="collapse" 
+                data-bs-target="#collapsePep">
+            <i class="bi bi-person-fill-exclamation me-2" style="color: #6f42c1;"></i>
+            <strong>Alertas PEP</strong>
+            <span class="badge ms-2" style="background-color: #6f42c1;">3</span>
+        </button>
+    </h2>
+    <div id="collapsePep" class="accordion-collapse collapse">
+        <div class="accordion-body">
+            <!-- Conteúdo do alerta -->
+        </div>
+    </div>
+</div>
+```
+
+**Características:**
+- Fundo branco (`bg-white`) no botão
+- Borda colorida conforme tipo (`border-color`)
+- Barra lateral esquerda colorida (`border-left: 4px solid`)
+- Ícone colorido no início
+- Badge com contagem na mesma cor
+
+### e. Sistema de Pin (Coluna Fixa)
+
+Implementação de funcionalidade para "pinar" colunas com cor da empresa:
+
+```css
+#rightColumn.pinned {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 20px !important;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+/* Scrollbar personalizado com cor da empresa */
+#rightColumn.pinned::-webkit-scrollbar-thumb {
+    background: var(--primary-color, #198754);
+    border-radius: 10px;
+}
+
+/* Botão de pin com cor da empresa */
+#rightColumn.pinned #pinDocumentosBtn {
+    background-color: color-mix(in srgb, var(--primary-color) 20%, white) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+}
+```
+
+**JavaScript para Persistência:**
+
+```javascript
+// Recupera estado do localStorage
+const isPinned = localStorage.getItem('rightColumnPinned') === 'true';
+if (isPinned) {
+    rightColumn.classList.add('pinned');
+}
+
+// Salva estado ao clicar
+pinBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    rightColumn.classList.toggle('pinned');
+    const pinned = rightColumn.classList.contains('pinned');
+    localStorage.setItem('rightColumnPinned', pinned);
+});
+```
+
+### f. Visualizador de Documentos
+
+**Preview de Imagens:**
+```javascript
+if (['jpg', 'jpeg', 'png', 'gif'].includes(docExt)) {
+    viewerContent.innerHTML = `
+        <img src="${docPath}" 
+             style="max-width: 100%; max-height: 450px; object-fit: contain;" 
+             alt="Preview">
+    `;
+}
+```
+
+**Preview de PDFs (3 métodos):**
+```javascript
+// Método 1: Google Docs Viewer (Padrão)
+const encodedPath = encodeURIComponent(window.location.origin + '/' + docPath);
+viewerContent.innerHTML = `
+    <iframe src="https://docs.google.com/viewer?url=${encodedPath}&embedded=true" 
+            style="width: 100%; height: 500px; border: none;">
+    </iframe>
+`;
+
+// Método 2: Embed Tag
+viewerContent.innerHTML = `
+    <embed src="${docPath}#toolbar=1" 
+           type="application/pdf" 
+           style="width: 100%; height: 500px;">
+`;
+
+// Método 3: Object Tag
+viewerContent.innerHTML = `
+    <object data="${docPath}" 
+            type="application/pdf" 
+            style="width: 100%; height: 500px;">
+        <p>Navegador não suporta PDF. 
+           <a href="${docPath}" target="_blank">Abrir em nova aba</a>
+        </p>
+    </object>
+`;
+```
+
+### g. Tooltips para Melhor UX
+
+Ativar tooltips do Bootstrap em todos os elementos:
+
+```javascript
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(
+        document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    );
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+```
+
+**Uso em Ícones:**
+```html
+<i class="bi bi-exclamation-triangle-fill text-danger" 
+   data-bs-toggle="tooltip" 
+   data-bs-placement="top" 
+   title="Empresa possui sanções CEIS"></i>
+```
+
+### h. Arquivos com Padronização Implementada
+
+| Arquivo | Badges | Ícones | Alertas | Pin | Docs |
+|---------|--------|--------|---------|-----|------|
+| `kyc_evaluate.php` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `kyc_list.php` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `dashboard_analytics.php` | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+### i. Checklist para Nova Página com KYC
+
+Ao criar uma nova página que exibe dados de KYC:
+
+- [ ] Incluir Bootstrap Icons CSS no header
+- [ ] Usar função `getBadgeClass()` ou switch para badges
+- [ ] Adicionar ícones nos badges de status
+- [ ] Implementar tooltips para ícones de alerta
+- [ ] Usar cores padronizadas (CEIS vermelho, CNEP amarelo, PEP roxo)
+- [ ] Se houver alertas, usar accordion com fundo branco
+- [ ] Se houver documentos, implementar preview inline
+- [ ] Considerar funcionalidade de pin para colunas auxiliares
+
+---

@@ -21,13 +21,13 @@ function getBadgeClass($status) {
         case 'Reprovado':
             return 'bg-danger';
         case 'Em Preenchimento':
-            return 'bg-warning text-dark';
+            return 'bg-secondary';
         case 'Em Análise':
-            return 'bg-warning text-dark';            
-        case 'Enviado':
+            return 'bg-info';
+        case 'Novo Registro':
             return 'bg-primary';
         case 'Pendenciado':
-            return 'bg-secondary';
+            return 'bg-warning text-dark';
         default:
             return 'bg-light text-dark';
     }
@@ -83,6 +83,13 @@ try {
                 e.nome AS nome_empresa_master,
                 kc.nome_completo AS nome_cliente,
                 
+                /* FLAGS DE ALERTA CEIS, CNEP, PEP */
+                COALESCE(ka.av_check_ceis_ok, 1) as tem_ceis,
+                COALESCE(ka.av_check_ceis_pf_ok, 1) as tem_ceis_pf,
+                COALESCE(ka.av_check_cnep_ok, 1) as tem_cnep,
+                COALESCE(ka.av_check_cnep_pf_ok, 1) as tem_cnep_pf,
+                (SELECT COUNT(*) FROM kyc_socios ks WHERE ks.empresa_id = ke.id AND ks.is_pep = 1) as tem_pep,
+                
                 /* Busca o nome do analista fazendo JOIN com 'usuarios' e 'superadmin'
                    baseado no 'usuario_id' do último log que NÃO pertence ao cliente.
                 */
@@ -99,6 +106,7 @@ try {
              FROM kyc_empresas ke
              LEFT JOIN empresas e ON ke.id_empresa_master = e.id
              LEFT JOIN kyc_clientes kc ON ke.cliente_id = kc.id
+             LEFT JOIN kyc_avaliacoes ka ON ke.id = ka.kyc_empresa_id
              {$where_sql}
              {$order_by_sql}";
     
@@ -126,11 +134,12 @@ try {
                 <label for="status" class="form-label">Status</label>
                 <select name="status" id="status" class="form-select">
                     <option value="">Todos</option>
-                    <option value="Enviado" <?= ($filter_status == 'Enviado') ? 'selected' : '' ?>>Enviado</option>
+                    <option value="Em Preenchimento" <?= ($filter_status == 'Em Preenchimento') ? 'selected' : '' ?>>Em Preenchimento</option>
+                    <option value="Novo Registro" <?= ($filter_status == 'Novo Registro') ? 'selected' : '' ?>>Novo Registro</option>
                     <option value="Em Análise" <?= ($filter_status == 'Em Análise') ? 'selected' : '' ?>>Em Análise</option>
+                    <option value="Pendenciado" <?= ($filter_status == 'Pendenciado') ? 'selected' : '' ?>>Pendenciado</option>
                     <option value="Aprovado" <?= ($filter_status == 'Aprovado') ? 'selected' : '' ?>>Aprovado</option>
                     <option value="Reprovado" <?= ($filter_status == 'Reprovado') ? 'selected' : '' ?>>Reprovado</option>
-                    <option value="Pendenciado" <?= ($filter_status == 'Pendenciado') ? 'selected' : '' ?>>Pendenciado</option>
                 </select>
             </div>
             <?php if ($user_role === 'superadmin'): ?>
@@ -202,10 +211,42 @@ try {
                             
                             <td><?= htmlspecialchars($caso['nome_analista'] ?? '—') ?></td>
                             <td>
-                                <?php $badge_class = getBadgeClass($caso['status']); ?>
+                                <?php 
+                                $badge_class = getBadgeClass($caso['status']);
+                                
+                                // Verificar se tem alertas
+                                $tem_alerta_ceis = ($caso['tem_ceis'] == 0 || $caso['tem_ceis_pf'] == 0);
+                                $tem_alerta_cnep = ($caso['tem_cnep'] == 0 || $caso['tem_cnep_pf'] == 0);
+                                $tem_alerta_pep = ($caso['tem_pep'] > 0);
+                                ?>
                                 <span class="badge <?= $badge_class ?>">
                                     <?= htmlspecialchars($caso['status']) ?>
                                 </span>
+                                
+                                <!-- Ícones de Alerta -->
+                                <div class="mt-1">
+                                    <?php if ($tem_alerta_ceis): ?>
+                                    <i class="bi bi-exclamation-triangle-fill text-danger" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       title="Alerta CEIS"></i>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($tem_alerta_cnep): ?>
+                                    <i class="bi bi-exclamation-diamond-fill text-warning" 
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       title="Alerta CNEP"></i>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($tem_alerta_pep): ?>
+                                    <i class="bi bi-person-fill-exclamation" 
+                                       style="color: #6f42c1;"
+                                       data-bs-toggle="tooltip" 
+                                       data-bs-placement="top" 
+                                       title="Pessoa Exposta Politicamente"></i>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td>
                                 <a href="kyc_evaluate.php?id=<?= $caso['id'] ?>" class="btn btn-sm btn-primary">Analisar</a>

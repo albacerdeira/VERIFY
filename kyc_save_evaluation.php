@@ -48,11 +48,11 @@ if ($action === 'submit_decision') {
         $params['status'] = $new_status;
     }
 } else {
-    // Se for um rascunho, muda o status para 'Em Análise' se ainda estiver como 'Enviado'
+    // Se for um rascunho, muda o status para 'Em Análise' se ainda estiver como 'Novo Registro'
     $stmt_status = $pdo->prepare("SELECT status FROM kyc_empresas WHERE id = ?");
     $stmt_status->execute([$case_id]);
     $current_status = $stmt_status->fetchColumn();
-    if ($current_status === 'Enviado') {
+    if ($current_status === 'Novo Registro') {
         $params['status'] = 'Em Análise';
     }
 }

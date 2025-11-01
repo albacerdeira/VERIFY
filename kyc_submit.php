@@ -77,7 +77,7 @@ try {
         porte = ?, natureza_juridica = ?, opcao_pelo_simples = ?, representante_legal = ?, email_contato = ?, ddd_telefone_1 = ?, observacoes_empresa = ?,
         atividade_principal = ?, motivo_abertura_conta = ?, fluxo_financeiro_pretendido = ?, moedas_operar = ?, blockchains_operar = ?,
         volume_mensal_pretendido = ?, origem_fundos = ?, descricao_fundos_terceiros = ?, consentimento_termos = ?, 
-        status = 'Enviado' 
+        status = 'Novo Registro' 
         WHERE id = ?";
     
     $stmt_update = $pdo->prepare($sql_update);

@@ -37,23 +37,51 @@ $usuarios_ativos = [];
 $erro_carregamento = null;
 
 try {
-    // 1. CLIENTES (kyc_clientes)
-    $stmt_clientes_total = $pdo->query("SELECT COUNT(*) as total FROM kyc_clientes");
-    $total_clientes = $stmt_clientes_total->fetch(PDO::FETCH_ASSOC)['total'];
+    // ===== FILTRO POR EMPRESA (Segurança) =====
+    $where_empresa = "";
+    $params_empresa = [];
+    
+    if ($user_role !== 'superadmin' && $user_empresa_id) {
+        // Admin, Analista e Usuário veem apenas dados da sua empresa
+        $where_empresa = " WHERE ke.id_empresa_master = :empresa_id";
+        $params_empresa = [':empresa_id' => $user_empresa_id];
+    }
+    // Superadmin vê tudo (sem WHERE)
+    
+    // DEBUG: Log para verificar o que está sendo gerado
+    error_log("DASHBOARD DEBUG - Role: $user_role | Empresa ID: $user_empresa_id | WHERE: $where_empresa");
 
-    // Contagem por tipo (PF baseado em CPF preenchido, PJ em CNPJ)
-    $stmt_clientes_pf = $pdo->query("SELECT COUNT(*) as total FROM kyc_clientes WHERE cpf IS NOT NULL AND cpf != ''");
-    $clientes_por_tipo['PF'] = $stmt_clientes_pf->fetch(PDO::FETCH_ASSOC)['total'];
+    // 1. CLIENTES CADASTRADOS (kyc_clientes) - Filtrados por empresa
+    if ($user_role === 'superadmin') {
+        $sql_total_clientes = "SELECT COUNT(*) as total FROM kyc_clientes";
+        $stmt_total_clientes = $pdo->query($sql_total_clientes);
+    } else {
+        $sql_total_clientes = "SELECT COUNT(*) as total FROM kyc_clientes WHERE id_empresa_master = :empresa_id";
+        $stmt_total_clientes = $pdo->prepare($sql_total_clientes);
+        $stmt_total_clientes->execute([':empresa_id' => $user_empresa_id]);
+    }
+    $total_clientes = $stmt_total_clientes->fetch(PDO::FETCH_ASSOC)['total'];
 
-    $stmt_clientes_pj = $pdo->query("SELECT COUNT(*) as total FROM kyc_empresas");
-    $clientes_por_tipo['PJ'] = $stmt_clientes_pj->fetch(PDO::FETCH_ASSOC)['total'];
+    // Clientes com KYC Aprovado
+    $sql_clientes_aprovados = "SELECT COUNT(DISTINCT ke.cliente_id) as total
+                               FROM kyc_empresas ke
+                               $where_empresa";
+    if ($where_empresa) {
+        $sql_clientes_aprovados .= " AND ke.status = 'Aprovado'";
+    } else {
+        $sql_clientes_aprovados .= " WHERE ke.status = 'Aprovado'";
+    }
+    $stmt_clientes_aprovados = $pdo->prepare($sql_clientes_aprovados);
+    $stmt_clientes_aprovados->execute($params_empresa);
+    $total_clientes_aprovados = $stmt_clientes_aprovados->fetch(PDO::FETCH_ASSOC)['total'];
 
     // 2. KYC STATUS (kyc_empresas)
-    $stmt_kyc_status = $pdo->query("
-        SELECT status, COUNT(*) as total
-        FROM kyc_empresas
-        GROUP BY status
-    ");
+    $sql_kyc_status = "SELECT status, COUNT(*) as total
+                       FROM kyc_empresas ke
+                       $where_empresa
+                       GROUP BY status";
+    $stmt_kyc_status = $pdo->prepare($sql_kyc_status);
+    $stmt_kyc_status->execute($params_empresa);
     $kyc_por_status = [];
     $total_kyc = 0;
     while ($row = $stmt_kyc_status->fetch(PDO::FETCH_ASSOC)) {
@@ -61,32 +89,38 @@ try {
         $total_kyc += $row['total'];
     }
 
-    // 3. ALERTAS CEIS (usando flags da tabela kyc_avaliacoes)
+    // 3. ALERTAS CEIS (usando flags da tabela kyc_avaliacoes) - FILTRADO POR EMPRESA
     // av_check_ceis_ok: 1=OK, 0=Sanção encontrada, NULL=Não verificado
     // av_check_ceis_pf_ok: 1=OK, 0=Sanção em sócio PF
-    $stmt_ceis = $pdo->query("
-        SELECT COUNT(DISTINCT ka.kyc_empresa_id) as total
-        FROM kyc_avaliacoes ka
-        WHERE ka.av_check_ceis_ok = 0 OR ka.av_check_ceis_pf_ok = 0
-    ");
+    $sql_ceis = "SELECT COUNT(DISTINCT ka.kyc_empresa_id) as total
+                 FROM kyc_avaliacoes ka
+                 INNER JOIN kyc_empresas ke ON ka.kyc_empresa_id = ke.id
+                 $where_empresa
+                 AND (ka.av_check_ceis_ok = 0 OR ka.av_check_ceis_pf_ok = 0)";
+    $stmt_ceis = $pdo->prepare($sql_ceis);
+    $stmt_ceis->execute($params_empresa);
     $total_alertas_ceis = $stmt_ceis->fetch(PDO::FETCH_ASSOC)['total'];
 
-    // 4. ALERTAS CNEP (usando flags da tabela kyc_avaliacoes)
+    // 4. ALERTAS CNEP (usando flags da tabela kyc_avaliacoes) - FILTRADO POR EMPRESA
     // av_check_cnep_ok: 1=OK, 0=Sanção encontrada (PJ)
     // av_check_cnep_pf_ok: 1=OK, 0=Sanção em sócio PF
-    $stmt_cnep = $pdo->query("
-        SELECT COUNT(DISTINCT ka.kyc_empresa_id) as total
-        FROM kyc_avaliacoes ka
-        WHERE ka.av_check_cnep_ok = 0 OR ka.av_check_cnep_pf_ok = 0
-    ");
+    $sql_cnep = "SELECT COUNT(DISTINCT ka.kyc_empresa_id) as total
+                 FROM kyc_avaliacoes ka
+                 INNER JOIN kyc_empresas ke ON ka.kyc_empresa_id = ke.id
+                 $where_empresa
+                 AND (ka.av_check_cnep_ok = 0 OR ka.av_check_cnep_pf_ok = 0)";
+    $stmt_cnep = $pdo->prepare($sql_cnep);
+    $stmt_cnep->execute($params_empresa);
     $total_alertas_cnep = $stmt_cnep->fetch(PDO::FETCH_ASSOC)['total'];
 
-    // 5. ALERTAS PEP (usando flag is_pep=1 da tabela kyc_socios)
-    $stmt_pep_alertas = $pdo->query("
-        SELECT COUNT(DISTINCT ks.empresa_id) as total
-        FROM kyc_socios ks
-        WHERE ks.is_pep = 1
-    ");
+    // 5. ALERTAS PEP (usando flag is_pep=1 da tabela kyc_socios) - FILTRADO POR EMPRESA
+    $sql_pep = "SELECT COUNT(DISTINCT ks.empresa_id) as total
+                FROM kyc_socios ks
+                INNER JOIN kyc_empresas ke ON ks.empresa_id = ke.id
+                $where_empresa
+                AND ks.is_pep = 1";
+    $stmt_pep_alertas = $pdo->prepare($sql_pep);
+    $stmt_pep_alertas->execute($params_empresa);
     $total_alertas_pep = $stmt_pep_alertas->fetch(PDO::FETCH_ASSOC)['total'];
 
     // Totais de registros nas bases
@@ -102,9 +136,9 @@ try {
     // 6. CONSULTAS RECENTES (tabela consultas - filtradas por permissão)
     $consultas_sql = "
         SELECT COUNT(*) as total,
-               COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as hoje,
-               COUNT(CASE WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN 1 END) as semana,
-               COUNT(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE()) THEN 1 END) as mes
+               COUNT(CASE WHEN DATE(c.created_at) = CURDATE() THEN 1 END) as hoje,
+               COUNT(CASE WHEN YEARWEEK(c.created_at, 1) = YEARWEEK(CURDATE(), 1) THEN 1 END) as semana,
+               COUNT(CASE WHEN YEAR(c.created_at) = YEAR(CURDATE()) AND MONTH(c.created_at) = MONTH(CURDATE()) THEN 1 END) as mes
         FROM consultas c
     ";
     
@@ -124,56 +158,121 @@ try {
     }
     $consultas_stats = $stmt_consultas->fetch(PDO::FETCH_ASSOC);
 
-    // 7. KYC RECENTES (kyc_empresas com JOINs)
-    $stmt_kyc_recentes = $pdo->query("
-        SELECT ke.id, ke.razao_social as nome_empresa, ke.cnpj, ke.status, ke.data_criacao as created_at,
-               e.nome AS nome_empresa_master
-        FROM kyc_empresas ke
-        LEFT JOIN empresas e ON ke.id_empresa_master = e.id
-        ORDER BY ke.data_criacao DESC
-        LIMIT 5
-    ");
-    $kyc_recentes = $stmt_kyc_recentes->fetchAll(PDO::FETCH_ASSOC);
+    // 7. KYC RECENTES (kyc_empresas com JOINs + FLAGS DE ALERTA) - FILTRADO POR EMPRESA
+    try {
+        $sql_kyc_recentes = "SELECT ke.id, ke.razao_social as nome_empresa, ke.cnpj, ke.status, ke.data_criacao as created_at,
+                                    e.nome AS nome_empresa_master,
+                                    COALESCE(ka.av_check_ceis_ok, 1) as tem_ceis,
+                                    COALESCE(ka.av_check_ceis_pf_ok, 1) as tem_ceis_pf,
+                                    COALESCE(ka.av_check_cnep_ok, 1) as tem_cnep,
+                                    COALESCE(ka.av_check_cnep_pf_ok, 1) as tem_cnep_pf,
+                                    (SELECT COUNT(*) FROM kyc_socios ks WHERE ks.empresa_id = ke.id AND ks.is_pep = 1) as tem_pep
+                             FROM kyc_empresas ke
+                             LEFT JOIN empresas e ON ke.id_empresa_master = e.id
+                             LEFT JOIN kyc_avaliacoes ka ON ke.id = ka.kyc_empresa_id
+                             $where_empresa
+                             ORDER BY ke.data_criacao DESC
+                             LIMIT 5";
+        $stmt_kyc_recentes = $pdo->prepare($sql_kyc_recentes);
+        $stmt_kyc_recentes->execute($params_empresa);
+        $kyc_recentes = $stmt_kyc_recentes->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("KYC RECENTES ERROR: " . $e->getMessage() . " | SQL: " . $sql_kyc_recentes);
+        $kyc_recentes = [];
+    }
 
-    // 7. ÚLTIMAS CONSULTAS CNPJ (tabela consultas)
-    $stmt_ultimas_consultas = $pdo->query("
-        SELECT c.cnpj, c.razao_social, c.created_at,
-               u.nome as nome_usuario
-        FROM consultas c
-        LEFT JOIN usuarios u ON c.usuario_id = u.id
-        ORDER BY c.created_at DESC
-        LIMIT 5
-    ");
-    $consultas_recentes = $stmt_ultimas_consultas->fetchAll(PDO::FETCH_ASSOC);
+    // 8. ÚLTIMAS CONSULTAS CNPJ (tabela consultas) - JÁ FILTRADA ACIMA
+    // Reutiliza a mesma lógica de permissão das consultas
+    try {
+        $consultas_recentes_sql = "SELECT c.cnpj, c.razao_social, c.created_at,
+                                          u.nome as nome_usuario
+                                   FROM consultas c
+                                   LEFT JOIN usuarios u ON c.usuario_id = u.id";
+        
+        if ($user_role === 'superadmin') {
+            $consultas_recentes_sql .= " ORDER BY c.created_at DESC LIMIT 5";
+            $stmt_ultimas_consultas = $pdo->query($consultas_recentes_sql);
+        } elseif (in_array($user_role, ['admin', 'administrador'])) {
+            $consultas_recentes_sql .= " WHERE u.empresa_id = :empresa_id ORDER BY c.created_at DESC LIMIT 5";
+            $stmt_ultimas_consultas = $pdo->prepare($consultas_recentes_sql);
+            $stmt_ultimas_consultas->execute([':empresa_id' => $user_empresa_id]);
+        } else {
+            $consultas_recentes_sql .= " WHERE c.usuario_id = :usuario_id ORDER BY c.created_at DESC LIMIT 5";
+            $stmt_ultimas_consultas = $pdo->prepare($consultas_recentes_sql);
+            $stmt_ultimas_consultas->execute([':usuario_id' => $user_id]);
+        }
+        $consultas_recentes = $stmt_ultimas_consultas->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("CONSULTAS RECENTES ERROR: " . $e->getMessage() . " | SQL: " . $consultas_recentes_sql);
+        $consultas_recentes = [];
+    }
 
-    // 8. TEMPO MÉDIO DE ANÁLISE (KYC aprovados/reprovados)
-    $stmt_tempo_medio = $pdo->query("
-        SELECT AVG(TIMESTAMPDIFF(HOUR, data_criacao, data_atualizacao)) as horas_media
-        FROM kyc_empresas
-        WHERE analise_decisao_final IS NOT NULL AND data_atualizacao IS NOT NULL
-    ");
+    // 9. TEMPO MÉDIO DE ANÁLISE (KYC aprovados/reprovados) - FILTRADO POR EMPRESA
+    $sql_tempo_medio = "SELECT AVG(TIMESTAMPDIFF(HOUR, data_criacao, data_atualizacao)) as horas_media
+                        FROM kyc_empresas ke
+                        $where_empresa";
+    if ($where_empresa) {
+        $sql_tempo_medio .= " AND analise_decisao_final IS NOT NULL AND data_atualizacao IS NOT NULL";
+    } else {
+        $sql_tempo_medio .= " WHERE analise_decisao_final IS NOT NULL AND data_atualizacao IS NOT NULL";
+    }
+    $stmt_tempo_medio = $pdo->prepare($sql_tempo_medio);
+    $stmt_tempo_medio->execute($params_empresa);
     $tempo_medio_analise = $stmt_tempo_medio->fetch(PDO::FETCH_ASSOC)['horas_media'] ?? 0;
 
-    // 9. CRESCIMENTO MENSAL DE CLIENTES (kyc_clientes)
-    $stmt_crescimento = $pdo->query("
-        SELECT DATE_FORMAT(created_at, '%Y-%m') as mes, COUNT(*) as total
-        FROM kyc_clientes
-        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-        GROUP BY mes
-        ORDER BY mes DESC
-    ");
-    $crescimento_clientes = $stmt_crescimento->fetchAll(PDO::FETCH_ASSOC);    // 10. USUÁRIOS MAIS ATIVOS (baseado em kyc_log_atividades)
+    // 10. CRESCIMENTO MENSAL DE CLIENTES (kyc_clientes) - FILTRADO POR EMPRESA
+    try {
+        $sql_crescimento = "SELECT DATE_FORMAT(kc.created_at, '%Y-%m') as mes, COUNT(*) as total
+                            FROM kyc_clientes kc
+                            INNER JOIN kyc_empresas ke ON kc.id = ke.cliente_id";
+        
+        if ($where_empresa) {
+            // Se já tem WHERE, usa AND para adicionar condição de data
+            $sql_crescimento .= " $where_empresa AND kc.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)";
+        } else {
+            // Se não tem WHERE, adiciona WHERE para a condição de data
+            $sql_crescimento .= " WHERE kc.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)";
+        }
+        
+        $sql_crescimento .= " GROUP BY DATE_FORMAT(kc.created_at, '%Y-%m') ORDER BY mes DESC";
+        
+        $stmt_crescimento = $pdo->prepare($sql_crescimento);
+        $stmt_crescimento->execute($params_empresa);
+        $crescimento_clientes = $stmt_crescimento->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("CRESCIMENTO ERROR: " . $e->getMessage() . " | SQL: " . $sql_crescimento . " | PARAMS: " . print_r($params_empresa, true));
+        $crescimento_clientes = [];
+    }    // 11. USUÁRIOS MAIS ATIVOS (baseado em kyc_log_atividades) - FILTRADO POR EMPRESA
     if ($is_superadmin || $is_admin) {
-        $stmt_usuarios_ativos = $pdo->query("
-            SELECT u.nome, COUNT(DISTINCT kla.kyc_empresa_id) as total_kyc
-            FROM usuarios u
-            LEFT JOIN kyc_log_atividades kla ON u.id = kla.usuario_id
-            WHERE kla.timestamp >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY u.id, u.nome
-            HAVING total_kyc > 0
-            ORDER BY total_kyc DESC
-            LIMIT 5
-        ");
+        // Superadmin vê empresa do usuário, Admin vê apenas seus usuários
+        if ($user_role === 'superadmin') {
+            $sql_usuarios_ativos = "SELECT u.nome, e.nome as empresa_nome, COUNT(DISTINCT kla.kyc_empresa_id) as total_kyc
+                                    FROM usuarios u
+                                    LEFT JOIN kyc_log_atividades kla ON u.id = kla.usuario_id AND kla.timestamp >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                                    LEFT JOIN kyc_empresas ke ON kla.kyc_empresa_id = ke.id
+                                    LEFT JOIN empresas e ON u.empresa_id = e.id
+                                    GROUP BY u.id, u.nome, e.nome
+                                    HAVING total_kyc > 0
+                                    ORDER BY total_kyc DESC
+                                    LIMIT 5";
+            $stmt_usuarios_ativos = $pdo->query($sql_usuarios_ativos);
+        } else {
+            // Admin vê apenas usuários da sua empresa (com atividade nos últimos 30 dias)
+            $sql_usuarios_ativos = "SELECT u.nome, COUNT(DISTINCT CASE WHEN ke.id_empresa_master = :empresa_id THEN kla.kyc_empresa_id END) as total_kyc
+                                    FROM usuarios u
+                                    LEFT JOIN kyc_log_atividades kla ON u.id = kla.usuario_id AND kla.timestamp >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                                    LEFT JOIN kyc_empresas ke ON kla.kyc_empresa_id = ke.id
+                                    WHERE u.empresa_id = :empresa_id2
+                                    GROUP BY u.id, u.nome
+                                    HAVING total_kyc > 0
+                                    ORDER BY total_kyc DESC
+                                    LIMIT 5";
+            $stmt_usuarios_ativos = $pdo->prepare($sql_usuarios_ativos);
+            $stmt_usuarios_ativos->execute([
+                ':empresa_id' => $user_empresa_id,
+                ':empresa_id2' => $user_empresa_id
+            ]);
+        }
         $usuarios_ativos = $stmt_usuarios_ativos->fetchAll(PDO::FETCH_ASSOC);
     }
 } catch (PDOException $e) {
@@ -208,9 +307,9 @@ try {
                         <div class="w-100">
                             <h6 class="text-muted mb-2">Total de Clientes</h6>
                             <h3 class="mb-0"><?= number_format($total_clientes, 0, ',', '.') ?></h3>
-                            <small class="text-muted">
-                                PF: <?= $clientes_por_tipo['PF'] ?? 0 ?> | 
-                                PJ: <?= $clientes_por_tipo['PJ'] ?? 0 ?>
+                            <small class="text-success">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <?= number_format($total_clientes_aprovados, 0, ',', '.') ?> com KYC Aprovado
                             </small>
                         </div>
                         <div class="text-primary" style="font-size: 2.5rem;">
@@ -355,12 +454,12 @@ try {
                             </thead>
                             <tbody>
                                 <?php
-                                // Status reais do banco: "Aprovado", "Reprovado", "Em Análise", "Em Preenchimento", "Enviado", "Pendenciado"
+                                // Status reais do banco: "Aprovado", "Reprovado", "Em Análise", "Em Preenchimento", "Novo Registro", "Pendenciado"
                                 $status_labels = [
-                                    'Em Preenchimento' => ['label' => 'Em Preenchimento', 'class' => 'warning text-dark'],
-                                    'Enviado' => ['label' => 'Enviado', 'class' => 'primary'],
-                                    'Em Análise' => ['label' => 'Em Análise', 'class' => 'warning text-dark'],
-                                    'Pendenciado' => ['label' => 'Pendenciado', 'class' => 'secondary'],
+                                    'Em Preenchimento' => ['label' => 'Em Preenchimento', 'class' => 'secondary'],
+                                    'Novo Registro' => ['label' => 'Novo Registro', 'class' => 'primary'],
+                                    'Em Análise' => ['label' => 'Em Análise', 'class' => 'info'],
+                                    'Pendenciado' => ['label' => 'Pendenciado', 'class' => 'warning text-dark'],
                                     'Aprovado' => ['label' => 'Aprovado', 'class' => 'success'],
                                     'Reprovado' => ['label' => 'Reprovado', 'class' => 'danger']
                                 ];
@@ -467,18 +566,67 @@ try {
                                     <td><small><?= htmlspecialchars($kyc['cnpj']) ?></small></td>
                                     <td>
                                         <?php
-                                        // Mesma lógica de badges do kyc_list.php
-                                        $badge_class = match($kyc['status']) {
-                                            'Aprovado' => 'bg-success',
-                                            'Reprovado' => 'bg-danger',
-                                            'Em Preenchimento' => 'bg-warning text-dark',
-                                            'Em Análise' => 'bg-warning text-dark',
-                                            'Enviado' => 'bg-primary',
-                                            'Pendenciado' => 'bg-secondary',
-                                            default => 'bg-light text-dark'
-                                        };
+                                        // Badges sem ícones (simplificado)
+                                        $badge_class = '';
+                                        
+                                        switch ($kyc['status']) {
+                                            case 'Aprovado':
+                                                $badge_class = 'bg-success';
+                                                break;
+                                            case 'Reprovado':
+                                                $badge_class = 'bg-danger';
+                                                break;
+                                            case 'Em Análise':
+                                                $badge_class = 'bg-info';
+                                                break;
+                                            case 'Pendenciado':
+                                                $badge_class = 'bg-warning text-dark';
+                                                break;
+                                            case 'Em Preenchimento':
+                                                $badge_class = 'bg-secondary';
+                                                break;
+                                            case 'Novo Registro':
+                                                $badge_class = 'bg-primary';
+                                                break;
+                                            default:
+                                                $badge_class = 'bg-light text-dark';
+                                        }
+                                        
+                                        // Verificar se tem alertas
+                                        $tem_alerta_ceis = ($kyc['tem_ceis'] == 0 || $kyc['tem_ceis_pf'] == 0);
+                                        $tem_alerta_cnep = ($kyc['tem_cnep'] == 0 || $kyc['tem_cnep_pf'] == 0);
+                                        $tem_alerta_pep = ($kyc['tem_pep'] > 0);
                                         ?>
-                                        <span class="badge <?= $badge_class ?>"><?= htmlspecialchars($kyc['status']) ?></span>
+                                        <span class="badge <?= $badge_class ?>">
+                                            <?= htmlspecialchars($kyc['status']) ?>
+                                        </span>
+                                        
+                                        <!-- Ícones de Alerta -->
+                                        <?php if ($tem_alerta_ceis || $tem_alerta_cnep || $tem_alerta_pep): ?>
+                                        <div class="mt-1">
+                                            <?php if ($tem_alerta_ceis): ?>
+                                            <i class="bi bi-exclamation-triangle-fill text-danger" 
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               title="Alerta CEIS"></i>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($tem_alerta_cnep): ?>
+                                            <i class="bi bi-exclamation-diamond-fill text-warning" 
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               title="Alerta CNEP"></i>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($tem_alerta_pep): ?>
+                                            <i class="bi bi-person-fill-exclamation" 
+                                               style="color: #6f42c1;"
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               title="Pessoa Exposta Politicamente"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php endif; ?>
                                     </td>
                                     <td><small><?= date('d/m/Y', strtotime($kyc['created_at'])) ?></small></td>
                                 </tr>
@@ -543,9 +691,10 @@ try {
                             </thead>
                             <tbody>
                                 <?php 
-                                $max_crescimento = max(array_column($crescimento_clientes, 'total'));
-                                foreach ($crescimento_clientes as $mes): 
-                                    $percent = $max_crescimento > 0 ? ($mes['total'] / $max_crescimento) * 100 : 0;
+                                if (!empty($crescimento_clientes)) {
+                                    $max_crescimento = max(array_column($crescimento_clientes, 'total'));
+                                    foreach ($crescimento_clientes as $mes): 
+                                        $percent = $max_crescimento > 0 ? ($mes['total'] / $max_crescimento) * 100 : 0;
                                 ?>
                                 <tr>
                                     <td><?= date('M/Y', strtotime($mes['mes'] . '-01')) ?></td>
@@ -556,7 +705,14 @@ try {
                                         </div>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php 
+                                    endforeach;
+                                } else {
+                                ?>
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">Nenhum dado disponível nos últimos 6 meses</td>
+                                </tr>
+                                <?php } ?>
                             </tbody>
                         </table>
                     </div>
@@ -578,19 +734,26 @@ try {
                                 <tr>
                                     <th>#</th>
                                     <th>Nome</th>
+                                    <?php if ($is_superadmin): ?>
+                                    <th>Empresa</th>
+                                    <?php endif; ?>
                                     <th class="text-end">KYC Criados</th>
                                     <th class="text-end">Gráfico</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php 
-                                $max_atividade = $usuarios_ativos[0]['total_kyc'] ?? 1;
-                                foreach ($usuarios_ativos as $index => $usuario): 
-                                    $percent = ($usuario['total_kyc'] / $max_atividade) * 100;
+                                if (!empty($usuarios_ativos)) {
+                                    $max_atividade = $usuarios_ativos[0]['total_kyc'] ?? 1;
+                                    foreach ($usuarios_ativos as $index => $usuario): 
+                                        $percent = ($usuario['total_kyc'] / $max_atividade) * 100;
                                 ?>
                                 <tr>
                                     <td><?= $index + 1 ?></td>
                                     <td><?= htmlspecialchars($usuario['nome']) ?></td>
+                                    <?php if ($is_superadmin): ?>
+                                    <td><small class="text-muted"><?= htmlspecialchars($usuario['empresa_nome'] ?? 'N/A') ?></small></td>
+                                    <?php endif; ?>
                                     <td class="text-end"><strong><?= $usuario['total_kyc'] ?></strong></td>
                                     <td>
                                         <div class="progress" style="height: 20px;">
@@ -598,7 +761,16 @@ try {
                                         </div>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php 
+                                    endforeach;
+                                } else {
+                                ?>
+                                <tr>
+                                    <td colspan="<?= $is_superadmin ? '5' : '4' ?>" class="text-center text-muted">
+                                        Nenhum usuário ativo nos últimos 30 dias
+                                    </td>
+                                </tr>
+                                <?php } ?>
                             </tbody>
                         </table>
                     </div>

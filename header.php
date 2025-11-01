@@ -66,8 +66,21 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
     <style>
         /* A cor primária agora é definida corretamente com base no login do admin */
         :root { --primary-color: <?= htmlspecialchars($cor_variavel) ?>; } 
+        
+        /* Links ativos - fundo com cor primária */
         .sidebar-nav-link.active {
             background-color: var(--primary-color);
+            color: #ffffff;
+        }
+        
+        /* Ícones dos links não ativos - cor primária */
+        .sidebar-nav-link:not(.active) i,
+        .sidebar-section-header i {
+            color: var(--primary-color);
+        }
+        
+        /* Ícones dos links ativos - branco */
+        .sidebar-nav-link.active i {
             color: #ffffff;
         }
     </style>

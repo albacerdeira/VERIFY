@@ -37,6 +37,14 @@ $stmt_caso = $pdo->prepare("SELECT e.*, a.*, e.id AS kyc_id_real, e.status AS st
 $stmt_caso->execute(['id' => $kyc_id]);
 $caso = $stmt_caso->fetch(PDO::FETCH_ASSOC);
 
+// --- Buscar dados do cliente associado ao caso ---
+$cliente = null;
+if ($caso && !empty($caso['cliente_id'])) {
+    $stmt_cliente = $pdo->prepare("SELECT id, nome_completo, cpf, email, status, created_at, updated_at, selfie_path FROM kyc_clientes WHERE id = :cliente_id");
+    $stmt_cliente->execute(['cliente_id' => $caso['cliente_id']]);
+    $cliente = $stmt_cliente->fetch(PDO::FETCH_ASSOC);
+}
+
 // --- VERIFICAÇÃO CEIS (PJ - Empresa) ---
 $sancoes_ceis_confirmadas_pj = []; 
 $ceis_match_found_pj = false;       
@@ -468,13 +476,32 @@ if (!function_exists('display_field')) {
 }
 if (!function_exists('render_risk_select')) {
     function render_risk_select($name, $label, $current_value) {
-        $options = ['Baixo', 'Médio', 'Alto'];
-        $html = "<div class='mb-3'><label for='$name' class='form-label'>$label</label><select name='$name' id='$name' class='form-select'>";
-        $html .= "<option value='' selected>Selecionar...</option>";
-        foreach ($options as $option) {
-            $selected = ($current_value == $option) ? 'selected' : '';
-            $html .= "<option value='$option' $selected>$option</option>";
+        $options = [
+            'Baixo' => ['class' => 'bg-success text-white', 'icon' => 'bi-check-circle-fill'],
+            'Médio' => ['class' => 'bg-warning text-dark', 'icon' => 'bi-exclamation-triangle-fill'],
+            'Alto' => ['class' => 'bg-danger text-white', 'icon' => 'bi-x-octagon-fill']
+        ];
+        
+        // Determina a classe do select baseado no valor atual
+        $selectClass = 'form-select';
+        if ($current_value && isset($options[$current_value])) {
+            $selectClass .= ' ' . $options[$current_value]['class'];
         }
+        
+        $html = "<div class='mb-3'>
+                    <label for='$name' class='form-label fw-semibold'>
+                        <i class='bi bi-speedometer2 me-1'></i>$label
+                    </label>
+                    <select name='$name' id='$name' class='$selectClass' data-risk-select='true'>
+                        <option value=''>Selecionar...</option>";
+        
+        foreach ($options as $option => $config) {
+            $selected = ($current_value == $option) ? 'selected' : '';
+            $html .= "<option value='$option' $selected data-class='{$config['class']}' data-icon='{$config['icon']}'>
+                        $option
+                      </option>";
+        }
+        
         $html .= "</select></div>";
         return $html;
     }
@@ -520,6 +547,62 @@ function render_checklist_icon($name, $label, $is_checked) {
     .ficha-modal-content dd {
         font-weight: 400;
     }
+    
+    /* Sistema de Pin */
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+    }
+    #rightColumn {
+        transition: all 0.3s ease;
+    }
+    #rightColumn.pinned {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        top: 20px !important;
+        align-self: flex-start !important;
+        z-index: 100 !important;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+    }
+    /* Scrollbar customizada quando pinado - usa cor da empresa */
+    #rightColumn.pinned::-webkit-scrollbar {
+        width: 8px;
+    }
+    #rightColumn.pinned::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    #rightColumn.pinned::-webkit-scrollbar-thumb {
+        background: var(--primary-color, #198754);
+        border-radius: 10px;
+    }
+    #rightColumn.pinned::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in srgb, var(--primary-color, #198754) 85%, black);
+    }
+    /* Firefox scrollbar */
+    #rightColumn.pinned {
+        scrollbar-width: thin;
+        scrollbar-color: var(--primary-color, #198754) #f1f1f1;
+    }
+    #pinDocumentosBtn {
+        transition: all 0.3s ease;
+    }
+    #rightColumn.pinned #pinDocumentosBtn {
+        background-color: color-mix(in srgb, var(--primary-color, #198754) 20%, white) !important;
+        border-color: var(--primary-color, #198754) !important;
+        color: var(--primary-color, #198754) !important;
+    }
+    #rightColumn.pinned #pinDocumentosBtn:hover {
+        background-color: var(--primary-color, #198754) !important;
+        color: white !important;
+    }
+    #pinDocumentosBtn .bi-pin-angle {
+        transition: transform 0.3s ease;
+    }
+    #rightColumn.pinned #pinDocumentosBtn .bi-pin-angle {
+        transform: rotate(45deg);
+    }
 </style>
 
 <form action="kyc_evaluate.php?id=<?= $kyc_id; ?>" method="POST">
@@ -527,96 +610,178 @@ function render_checklist_icon($name, $label, $is_checked) {
         <div class="row">
             <div class="col-lg-7">
 
-                <?php if ($ceis_match_found_pj && !empty($sancoes_ceis_confirmadas_pj)): ?>
-                <div class="card shadow-sm mb-4 border-danger">
-                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CEIS - Empresa PJ)</h5></div>
-                    <div class="card-body">
-                        <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CEIS para o CNPJ raiz desta empresa.</p>
-                        <ul class="list-group">
-                            <?php foreach ($sancoes_ceis_confirmadas_pj as $sancao): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
-                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
+                <!-- Accordion de Alertas de Compliance -->
+                <?php if (
+                    ($ceis_match_found_pj && !empty($sancoes_ceis_confirmadas_pj)) ||
+                    ($ceis_match_found_pf && !empty($sancoes_ceis_confirmadas_pf)) ||
+                    ($cnep_match_found_pj && !empty($sancoes_cnep_confirmadas_pj)) ||
+                    ($cnep_match_found_pf && !empty($sancoes_cnep_confirmadas_pf)) ||
+                    ($pep_match_found_pf && !empty($peps_confirmados_pf))
+                ): ?>
+                <div class="accordion mb-4" id="accordionAlertas">
+                    
+                    <?php if ($ceis_match_found_pj && !empty($sancoes_ceis_confirmadas_pj)): ?>
+                    <div class="accordion-item border-danger">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button bg-white" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCeisPJ" aria-expanded="true">
+                                <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i><strong>Alerta de Sanção (CEIS - Empresa PJ)</strong>
+                                <span class="badge bg-danger text-white ms-2"><?= count($sancoes_ceis_confirmadas_pj) ?></span>
+                            </button>
+                        </h2>
+                        <div id="collapseCeisPJ" class="accordion-collapse collapse show" data-bs-parent="#accordionAlertas">
+                            <div class="accordion-body">
+                                <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CEIS para o CNPJ raiz desta empresa.</p>
+                                <ul class="list-group">
+                                    <?php foreach ($sancoes_ceis_confirmadas_pj as $sancao): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                            <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
+                    <?php endif; ?>
+
+                    <?php if ($ceis_match_found_pf && !empty($sancoes_ceis_confirmadas_pf)): ?>
+                    <div class="accordion-item border-danger">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button bg-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCeisPF" aria-expanded="false">
+                                <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i><strong>Alerta de Sanção (CEIS - Sócios PF)</strong>
+                                <span class="badge bg-danger text-white ms-2"><?= count($sancoes_ceis_confirmadas_pf) ?></span>
+                            </button>
+                        </h2>
+                        <div id="collapseCeisPF" class="accordion-collapse collapse" data-bs-parent="#accordionAlertas">
+                            <div class="accordion-body">
+                                <p>Atenção: Foram encontradas sanções no CEIS para um ou mais CPFs dos sócios/administradores.</p>
+                                <ul class="list-group">
+                                    <?php foreach ($sancoes_ceis_confirmadas_pf as $sancao): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                            <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($cnep_match_found_pj && !empty($sancoes_cnep_confirmadas_pj)): ?>
+                    <div class="accordion-item border-warning">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button bg-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCnepPJ" aria-expanded="false">
+                                <i class="bi bi-exclamation-diamond-fill text-warning me-2"></i><strong>Alerta de Sanção (CNEP - Empresa PJ)</strong>
+                                <span class="badge bg-warning text-dark ms-2"><?= count($sancoes_cnep_confirmadas_pj) ?></span>
+                            </button>
+                        </h2>
+                        <div id="collapseCnepPJ" class="accordion-collapse collapse" data-bs-parent="#accordionAlertas">
+                            <div class="accordion-body">
+                                <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CNEP para o CNPJ raiz desta empresa.</p>
+                                <ul class="list-group">
+                                    <?php foreach ($sancoes_cnep_confirmadas_pj as $sancao): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                            <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($cnep_match_found_pf && !empty($sancoes_cnep_confirmadas_pf)): ?>
+                    <div class="accordion-item border-warning">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button bg-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCnepPF" aria-expanded="false">
+                                <i class="bi bi-exclamation-diamond-fill text-warning me-2"></i><strong>Alerta de Sanção (CNEP - Sócios PF)</strong>
+                                <span class="badge bg-warning text-dark ms-2"><?= count($sancoes_cnep_confirmadas_pf) ?></span>
+                            </button>
+                        </h2>
+                        <div id="collapseCnepPF" class="accordion-collapse collapse" data-bs-parent="#accordionAlertas">
+                            <div class="accordion-body">
+                                <p>Atenção: Foram encontradas sanções no CNEP para um ou mais CPFs dos sócios/administradores.</p>
+                                <ul class="list-group">
+                                    <?php foreach ($sancoes_cnep_confirmadas_pf as $sancao): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
+                                            <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($pep_match_found_pf && !empty($peps_confirmados_pf)): ?>
+                    <div class="accordion-item" style="border-color: #6f42c1;">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button bg-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePEP" aria-expanded="false">
+                                <i class="bi bi-person-fill-exclamation me-2" style="color: #6f42c1;"></i><strong>Alerta de Pessoa Exposta Politicamente (PEP)</strong>
+                                <span class="badge ms-2" style="background-color: #6f42c1; color: white;"><?= count($peps_confirmados_pf) ?></span>
+                            </button>
+                        </h2>
+                        <div id="collapsePEP" class="accordion-collapse collapse" data-bs-parent="#accordionAlertas">
+                            <div class="accordion-body">
+                                <p>Atenção: Um ou mais sócios/administradores foram identificados como PEP.</p>
+                                <ul class="list-group">
+                                    <?php foreach ($peps_confirmados_pf as $pep): ?>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div><strong>Nome:</strong> <?= htmlspecialchars($pep['nome_pep']) ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($pep['cpf']) ?> | <strong>Função:</strong> <?= htmlspecialchars($pep['descricao_funcao']) ?></small></div>
+                                            <button type="button" class="btn btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#pepDetailModal" data-pep-json="<?= htmlspecialchars(json_encode($pep), ENT_QUOTES, 'UTF-8') ?>" style="border: 1px solid #6f42c1; color: #6f42c1;">Ver Ficha</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                    
                 </div>
                 <?php endif; ?>
-
-                <?php if ($ceis_match_found_pf && !empty($sancoes_ceis_confirmadas_pf)): ?>
-                <div class="card shadow-sm mb-4 border-danger">
-                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CEIS - Sócios PF)</h5></div>
-                    <div class="card-body">
-                        <p>Atenção: Foram encontradas sanções no CEIS para um ou mais CPFs dos sócios/administradores.</p>
-                        <ul class="list-group">
-                            <?php foreach ($sancoes_ceis_confirmadas_pf as $sancao): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
-                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#ceisDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($cnep_match_found_pj && !empty($sancoes_cnep_confirmadas_pj)): ?>
-                <div class="card shadow-sm mb-4 border-danger">
-                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CNEP - Empresa PJ)</h5></div>
-                    <div class="card-body">
-                        <p>Atenção: Foram encontradas sanções com alta similaridade de nome no CNEP para o CNPJ raiz desta empresa.</p>
-                        <ul class="list-group">
-                            <?php foreach ($sancoes_cnep_confirmadas_pj as $sancao): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: $sancao['razao_social']) ?><br><small><strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
-                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($cnep_match_found_pf && !empty($sancoes_cnep_confirmadas_pf)): ?>
-                <div class="card shadow-sm mb-4 border-danger">
-                    <div class="card-header bg-danger text-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alerta de Sanção (CNEP - Sócios PF)</h5></div>
-                    <div class="card-body">
-                        <p>Atenção: Foram encontradas sanções no CNEP para um ou mais CPFs dos sócios/administradores.</p>
-                        <ul class="list-group">
-                            <?php foreach ($sancoes_cnep_confirmadas_pf as $sancao): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div><strong>Sancionado:</strong> <?= htmlspecialchars($sancao['nome_sancionado'] ?: 'Não informado') ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($sancao['cpf_cnpj_sancionado']) ?> | <strong>Órgão:</strong> <?= htmlspecialchars($sancao['orgao_sancionador']) ?></small></div>
-                                    <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#cnepDetailModal" data-sancao-json="<?= htmlspecialchars(json_encode($sancao), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($pep_match_found_pf && !empty($peps_confirmados_pf)): ?>
-                <div class="card shadow-sm mb-4 border-warning">
-                    <div class="card-header bg-warning text-dark"><h5 class="mb-0"><i class="fas fa-user-tie me-2"></i>Alerta de Pessoa Exposta Politicamente (PEP)</h5></div>
-                    <div class="card-body">
-                        <p>Atenção: Um ou mais sócios/administradores foram identificados como PEP.</p>
-                        <ul class="list-group">
-                            <?php foreach ($peps_confirmados_pf as $pep): ?>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div><strong>Nome:</strong> <?= htmlspecialchars($pep['nome_pep']) ?><br><small><strong>CPF:</strong> <?= htmlspecialchars($pep['cpf']) ?> | <strong>Função:</strong> <?= htmlspecialchars($pep['descricao_funcao']) ?></small></div>
-                                    <button type="button" class="btn btn-outline-warning btn-sm flex-shrink-0" data-bs-toggle="modal" data-bs-target="#pepDetailModal" data-pep-json="<?= htmlspecialchars(json_encode($pep), ENT_QUOTES, 'UTF-8') ?>">Ver Ficha</button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </div>
-                <?php endif; ?>
-
 
                 <div class="card shadow-sm mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">Análise de Caso KYC: #<?= $caso['kyc_id_real']; ?></h4>
-                        <span class="badge bg-secondary-soft text-secondary"><?= htmlspecialchars($caso['status_caso']); ?></span>
+                        <?php
+                        // Define a badge baseada no status
+                        $status = $caso['status_caso'];
+                        $badge_class = 'bg-secondary';
+                        $badge_icon = 'bi-circle-fill';
+                        
+                        switch ($status) {
+                            case 'Aprovado':
+                                $badge_class = 'bg-success';
+                                $badge_icon = 'bi-check-circle-fill';
+                                break;
+                            case 'Reprovado':
+                                $badge_class = 'bg-danger';
+                                $badge_icon = 'bi-x-circle-fill';
+                                break;
+                            case 'Em Análise':
+                                $badge_class = 'bg-info';
+                                $badge_icon = 'bi-clock-history';
+                                break;
+                            case 'Pendenciado':
+                                $badge_class = 'bg-warning text-dark';
+                                $badge_icon = 'bi-exclamation-circle-fill';
+                                break;
+                            case 'Em Preenchimento':
+                                $badge_class = 'bg-secondary';
+                                $badge_icon = 'bi-pencil-square';
+                                break;
+                            case 'Novo Registro':
+                                $badge_class = 'bg-primary';
+                                $badge_icon = 'bi-file-earmark-plus';
+                                break;
+                        }
+                        ?>
+                        <span class="badge <?= $badge_class ?>">
+                            <i class="bi <?= $badge_icon ?> me-1"></i><?= htmlspecialchars($status) ?>
+                        </span>
                     </div>
                     <div class="card-body">
                         <p class="lead text-muted mb-4">Cliente: <?= htmlspecialchars($caso['razao_social']); ?></p>
@@ -625,22 +790,114 @@ function render_checklist_icon($name, $label, $is_checked) {
                     
                     </div>
                 </div>
+
+                <?php if ($cliente): ?>
+                <!-- Ficha do Cliente -->
+                <div class="card shadow-sm mb-4">
+                    <div class="accordion" id="accordionFichaCliente">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFichaCliente" aria-expanded="false">
+                                    <i class="bi bi-person-badge me-2"></i><strong>Ficha do Cliente</strong>
+                                </button>
+                            </h2>
+                            <div id="collapseFichaCliente" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>Nome Completo:</strong><br><?= htmlspecialchars($cliente['nome_completo']) ?></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>CPF:</strong><br><?= htmlspecialchars($cliente['cpf'] ?? 'Não informado') ?></p>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>Email:</strong><br><?= htmlspecialchars($cliente['email']) ?></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>Status da Conta:</strong><br>
+                                                <?php
+                                                $status_badge = 'secondary';
+                                                if ($cliente['status'] == 'ativo') $status_badge = 'success';
+                                                elseif ($cliente['status'] == 'inativo') $status_badge = 'danger';
+                                                elseif ($cliente['status'] == 'pendente') $status_badge = 'warning';
+                                                ?>
+                                                <span class="badge bg-<?= $status_badge ?>"><?= ucfirst(htmlspecialchars($cliente['status'])) ?></span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>Data de Cadastro:</strong><br><?= date('d/m/Y H:i', strtotime($cliente['created_at'])) ?></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="mb-2"><strong>Última Atualização:</strong><br><?= date('d/m/Y H:i', strtotime($cliente['updated_at'])) ?></p>
+                                        </div>
+                                    </div>
+                                    <?php if (!empty($cliente['selfie_path'])): ?>
+                                    <div class="text-center mt-3">
+                                        <p class="mb-2"><strong>Selfie Enviada:</strong></p>
+                                        <?php
+                                        $path_servidor = $cliente['selfie_path'];
+                                        $ext = strtolower(pathinfo($path_servidor, PATHINFO_EXTENSION));
+                                        $cache_buster = file_exists($path_servidor) ? '?v=' . filemtime($path_servidor) : '';
+                                        $path_web = '/' . ltrim($path_servidor, '/') . $cache_buster;
+                                        
+                                        if (file_exists($path_servidor)) {
+                                            if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
+                                                echo '<img src="' . htmlspecialchars($path_web) . '" alt="Selfie" class="img-fluid rounded border" style="max-height: 200px;">';
+                                            } elseif ($ext == 'pdf') {
+                                                echo '<a href="' . htmlspecialchars($path_web) . '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-pdf me-1"></i>Ver PDF</a>';
+                                            }
+                                        } else {
+                                            echo '<p class="text-muted small">Arquivo não encontrado</p>';
+                                        }
+                                        ?>
+                                    </div>
+                                    <?php else: ?>
+                                    <div class="alert alert-info text-center mb-0">
+                                        <i class="bi bi-info-circle me-1"></i>Nenhuma selfie foi enviada
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
 
-            <div class="col-lg-5" style="position: sticky; top: 20px;">
+            <div class="col-lg-5" id="rightColumn">
                 
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header"><h5 class="mb-0">Documentos Anexados</h5></div>
+                <div class="card shadow-sm mb-4" id="documentosCard">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Documentos Anexados</h5>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="pinDocumentosBtn" title="Fixar painel">
+                            <i class="bi bi-pin-angle"></i>
+                        </button>
+                    </div>
                     <div class="card-body">
-                        <div class="row">
+                        <div class="row" id="documentosList">
                             <?php
                             $docs_empresa = array_filter($all_documents, fn($doc) => empty($doc['socio_id']));
                             if (count($docs_empresa) > 0) {
                                 foreach ($docs_empresa as $doc) {
                                     $doc_name = htmlspecialchars(ucfirst(str_replace(['doc_', '_'], ['', ' '], $doc['tipo_documento'])));
                                     $doc_path = htmlspecialchars($doc['path_arquivo'] ?? '#');
+                                    $doc_ext = strtolower(pathinfo($doc_path, PATHINFO_EXTENSION));
+                                    
+                                    // Define ícone baseado no tipo
+                                    $icon = 'bi-file-earmark';
+                                    if (in_array($doc_ext, ['pdf'])) $icon = 'bi-file-earmark-pdf';
+                                    elseif (in_array($doc_ext, ['jpg', 'jpeg', 'png', 'gif'])) $icon = 'bi-file-earmark-image';
+                                    elseif (in_array($doc_ext, ['doc', 'docx'])) $icon = 'bi-file-earmark-word';
+                                    elseif (in_array($doc_ext, ['xls', 'xlsx'])) $icon = 'bi-file-earmark-excel';
+                                    
                                     echo "<div class='col-md-6 mb-2'>
-                                            <a href='{$doc_path}' target='_blank' class='btn btn-outline-secondary btn-sm w-100 text-truncate'>{$doc_name}</a>
+                                            <button type='button' class='btn btn-outline-secondary btn-sm w-100 text-truncate doc-preview-btn' data-doc-path='{$doc_path}' data-doc-name='{$doc_name}' data-doc-ext='{$doc_ext}'>
+                                                <i class='bi {$icon} me-1'></i>{$doc_name}
+                                            </button>
                                           </div>";
                                 }
                             } else {
@@ -648,6 +905,25 @@ function render_checklist_icon($name, $label, $is_checked) {
                             }
                             ?>
                         </div>
+                        
+                        <!-- Visualizador de Documentos -->
+                        <div id="documentViewer" class="mt-3" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0" id="viewerTitle">Documento</h6>
+                                <div>
+                                    <a href="#" target="_blank" id="viewerOpenNew" class="btn btn-sm btn-outline-primary me-1" title="Abrir em nova aba">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="viewerClose" title="Fechar">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="viewerContent" class="border rounded p-2 bg-light" style="min-height: 300px; max-height: 500px; overflow: auto;">
+                                <!-- Conteúdo do preview será carregado aqui -->
+                            </div>
+                        </div>
+                        
                         <div class="mt-3">
                             <label for="av_obs_documentos" class="form-label small">Observações sobre os Documentos</label>
                             <textarea class="form-control observation-field" name="av_obs_documentos" id="av_obs_documentos" rows="3" data-label="Documentos"><?= htmlspecialchars($caso['av_obs_documentos'] ?? '') ?></textarea>
@@ -658,34 +934,58 @@ function render_checklist_icon($name, $label, $is_checked) {
                 <div class="card shadow-sm">
                     <div class="card-header"><h5 class="mb-0">Painel de Análise do Compliance</h5></div>
                     <div class="card-body">
-                         <fieldset class="mb-4">
-                            <legend class="h6 fw-bold border-bottom pb-2 mb-3">Checklist de Validação</legend>
+                        <!-- Accordion: Checklist de Validação -->
+                        <div class="accordion mb-4" id="accordionChecklist">
+                            <!-- Item 1: Checklist de Validação -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseChecklist" aria-expanded="true">
+                                        <i class="bi bi-list-check me-2"></i><strong>Checklist de Validação</strong>
+                                    </button>
+                                </h2>
+                                <div id="collapseChecklist" class="accordion-collapse collapse show" data-bs-parent="#accordionChecklist">
+                                    <div class="accordion-body">
+                                        <!-- Hidden checkboxes -->
+                                        <input type="checkbox" name="av_check_dados_empresa_ok" id="av_check_dados_empresa_ok" value="1" class="d-none" <?= ($caso['av_check_dados_empresa_ok'] ?? 0) ? 'checked' : '' ?>>
+                                        <input type="checkbox" name="av_check_perfil_negocio_ok" id="av_check_perfil_negocio_ok" value="1" class="d-none" <?= ($caso['av_check_perfil_negocio_ok'] ?? 0) ? 'checked' : '' ?>>
+                                        <input type="checkbox" name="av_check_socios_ubos_ok" id="av_check_socios_ubos_ok" value="1" class="d-none" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : '' ?>>
+                                        <input type="checkbox" name="av_check_documentos_ok" id="av_check_documentos_ok" value="1" class="d-none" <?= ($caso['av_check_documentos_ok'] ?? 0) ? 'checked' : '' ?>>
+                                        <input type="hidden" name="av_check_socios_ubos_origin" id="av_check_socios_ubos_origin" value="<?= htmlspecialchars($caso['av_check_socios_ubos_origin'] ?? 'analyst') ?>">
+                                        
+                                        <!-- Container para os ícones dinâmicos -->
+                                        <div id="checklist-icons-container"></div>
+                                    </div>
+                                </div>
+                            </div>
                             
-                            <input type="checkbox" name="av_check_dados_empresa_ok" id="av_check_dados_empresa_ok" value="1" class="d-none" <?= ($caso['av_check_dados_empresa_ok'] ?? 0) ? 'checked' : '' ?>>
-                            <input type="checkbox" name="av_check_perfil_negocio_ok" id="av_check_perfil_negocio_ok" value="1" class="d-none" <?= ($caso['av_check_perfil_negocio_ok'] ?? 0) ? 'checked' : '' ?>>
-                            <input type="checkbox" name="av_check_socios_ubos_ok" id="av_check_socios_ubos_ok" value="1" class="d-none" <?= ($caso['av_check_socios_ubos_ok'] ?? 0) ? 'checked' : '' ?>>
-                            <input type="checkbox" name="av_check_documentos_ok" id="av_check_documentos_ok" value="1" class="d-none" <?= ($caso['av_check_documentos_ok'] ?? 0) ? 'checked' : '' ?>>
-                            
-                            <div id="checklist-icons-container"></div>
-                            
-                            <input type="hidden" name="av_check_socios_ubos_origin" id="av_check_socios_ubos_origin" value="<?= htmlspecialchars($caso['av_check_socios_ubos_origin'] ?? 'analyst') ?>">
-                        </fieldset>
+                            <!-- Item 2: Classificação de Risco -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRisco" aria-expanded="true">
+                                        <i class="bi bi-speedometer2 me-2"></i><strong>Classificação de Risco</strong>
+                                    </button>
+                                </h2>
+                                <div id="collapseRisco" class="accordion-collapse collapse show" data-bs-parent="#accordionChecklist">
+                                    <div class="accordion-body">
+                                        <?= render_risk_select('av_risco_atividade', 'Risco da Atividade', $caso['av_risco_atividade'] ?? ''); ?>
+                                        <?= render_risk_select('av_risco_geografico', 'Risco Geográfico', $caso['av_risco_geografico'] ?? ''); ?>
+                                        <?= render_risk_select('av_risco_societario', 'Risco da Estrutura Societária', $caso['av_risco_societario'] ?? ''); ?>
+                                        <?= render_risk_select('av_risco_midia_pep', 'Risco de Mídia Negativa / PEP', $caso['av_risco_midia_pep'] ?? ''); ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="mb-3"><label for="anotacoes" class="form-label fw-bold">Anotações Internas</label><textarea name="av_anotacoes_internas" class="form-control" rows="5"><?= htmlspecialchars($caso['av_anotacoes_internas'] ?? ''); ?></textarea></div>
-                        <fieldset class="mb-4">
-                            <legend class="h6 fw-bold border-bottom pb-2 mb-3">Classificação de Risco</legend>
-                            <?= render_risk_select('av_risco_atividade', 'Risco da Atividade', $caso['av_risco_atividade'] ?? ''); ?>
-                            <?= render_risk_select('av_risco_geografico', 'Risco Geográfico', $caso['av_risco_geografico'] ?? ''); ?>
-                            <?= render_risk_select('av_risco_societario', 'Risco da Estrutura Societária', $caso['av_risco_societario'] ?? ''); ?>
-                            <?= render_risk_select('av_risco_midia_pep', 'Risco de Mídia Negativa / PEP', $caso['av_risco_midia_pep'] ?? ''); ?>
-                        </fieldset>
                         <div class="mb-3"><label for="justificativa" class="form-label fw-bold">Justificativa do Risco Final</label><textarea name="av_justificativa_risco" class="form-control" rows="3" required><?= htmlspecialchars($caso['av_justificativa_risco'] ?? ''); ?></textarea></div>
                         <div class="mb-4"><label for="risco_final" class="form-label fw-bold">Nível de Risco Final Consolidado</label><select name="av_risco_final" class="form-select" required><option value="" disabled selected>Selecione...</option><option value="Baixo" <?= (($caso['av_risco_final'] ?? '') == 'Baixo') ? 'selected' : ''; ?>>Baixo</option><option value="Médio" <?= (($caso['av_risco_final'] ?? '') == 'Médio') ? 'selected' : ''; ?>>Médio</option><option value="Alto" <?= (($caso['av_risco_final'] ?? '') == 'Alto') ? 'selected' : ''; ?>>Alto</option></select></div>
                         <fieldset class="mb-3">
                             <legend class="h6 fw-bold border-bottom pb-2 mb-3">Decisão Final</legend>
                             <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="status_caso" value="Em Análise" id="decisao_analise" <?= (($caso['status_caso'] ?? '') == 'Em Análise') ? 'checked' : ''; ?> required><label class="btn btn-outline-info" for="decisao_analise">Em Análise</label>
                                 <input type="radio" class="btn-check" name="status_caso" value="Aprovado" id="decisao_aprovar" <?= (($caso['status_caso'] ?? '') == 'Aprovado') ? 'checked' : ''; ?> required><label class="btn btn-outline-success" for="decisao_aprovar">Aprovar</label>
                                 <input type="radio" class="btn-check" name="status_caso" value="Reprovado" id="decisao_reprovar" <?= (($caso['status_caso'] ?? '') == 'Reprovado') ? 'checked' : ''; ?> required><label class="btn btn-outline-danger" for="decisao_reprovar">Reprovar</label>
-                                <input type="radio" class="btn-check" name="status_caso" value="Pendenciado" id="decisao_pendenciar" <?= (($caso['status_caso'] ?? '') == 'Pendenciado') ? 'checked' : ''; ?> required><label class="btn btn-outline-secondary" for="decisao_pendenciar">Pendenciar</label>
+                                <input type="radio" class="btn-check" name="status_caso" value="Pendenciado" id="decisao_pendenciar" <?= (($caso['status_caso'] ?? '') == 'Pendenciado') ? 'checked' : ''; ?> required><label class="btn btn-outline-warning" for="decisao_pendenciar">Pendenciar</label>
                             </div>
                         </fieldset>
                         <div id="pendencia_container" class="mb-3" style="display: none;"><label for="info_pendencia" class="form-label">Informações de Pendência</label><textarea name="av_info_pendencia" id="info_pendencia" class="form-control" rows="3"><?= htmlspecialchars($caso['av_info_pendencia'] ?? ''); ?></textarea></div>
@@ -843,14 +1143,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const f = (value) => (value ? htmlspecialchars(value) : '<span class="text-muted">N/A</span>');
 
     function updateAndRenderChecklist() {
-        const ceisIconPJ = ceisMatchFoundPJ ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
-        const ceisIconPF = ceisMatchFoundPF ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
-        const pepIconPF = pepMatchFoundPF ? 'fas fa-user-tie text-warning' : 'fas fa-check-circle text-success';
-        const cnepIconPJ = cnepMatchFoundPJ ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
-        const cnepIconPF = cnepMatchFoundPF ? 'fas fa-exclamation-triangle text-danger' : 'fas fa-check-circle text-success';
+        // Padrão de ícones e cores consistente:
+        // CEIS (grave) = exclamation-triangle-fill vermelho
+        // CNEP (atenção) = exclamation-diamond-fill amarelo  
+        // PEP (info) = person-fill-exclamation purple (#6f42c1)
+        // Limpo/OK = check-circle-fill verde
+        // Em andamento = clock-fill amarelo
+        // Não iniciado = x-circle-fill vermelho
+        
+        const ceisIconPJ = ceisMatchFoundPJ ? 'bi bi-exclamation-triangle-fill text-danger' : 'bi bi-check-circle-fill text-success';
+        const ceisIconPF = ceisMatchFoundPF ? 'bi bi-exclamation-triangle-fill text-danger' : 'bi bi-check-circle-fill text-success';
+        const pepIconPF = pepMatchFoundPF ? 'bi bi-person-fill-exclamation' : 'bi bi-check-circle-fill text-success';
+        const pepColor = pepMatchFoundPF ? 'color: #6f42c1;' : '';
+        const cnepIconPJ = cnepMatchFoundPJ ? 'bi bi-exclamation-diamond-fill text-warning' : 'bi bi-check-circle-fill text-success';
+        const cnepIconPF = cnepMatchFoundPF ? 'bi bi-exclamation-diamond-fill text-warning' : 'bi bi-check-circle-fill text-success';
 
-        let html = `<h6 class="mb-3" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Sanções e Listas</h6>
-                    <div class="row">
+        let html = `<h6 class="mb-3" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="bi bi-shield-exclamation me-2 text-primary"></i>Sanções e Listas
+                    </h6>
+                    <div class="row g-2 mb-4">
                         <div class="col-lg-6">
                             <div class="checklist-item">
                                 <div class="checklist-item-icon"><i class="${ceisIconPJ}"></i></div>
@@ -877,13 +1188,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="col-lg-6">
                             <div class="checklist-item">
-                                <div class="checklist-item-icon"><i class="${pepIconPF}"></i></div>
+                                <div class="checklist-item-icon"><i class="${pepIconPF}" style="${pepColor}"></i></div>
                                 <span class="checklist-item-label" data-bs-toggle="tooltip" title="Pessoa Exposta Politicamente">Consulta Lista <strong>PEP</strong></span>
                             </div>
                         </div>
                     </div>`;
 
-        html += `<h6 class="mb-3 mt-4" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">Validações internas</h6>
+        html += `<h6 class="mb-3 mt-4" style="font-size: 0.9rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px;">
+                     <i class="bi bi-clipboard-check me-2 text-success"></i>Validações internas
+                 </h6>
                  <div class="row">`;
         
         let col1Html = '<div class="col-lg-6">';
@@ -897,19 +1210,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const total = subChecks.length;
             const checkedCount = Array.from(subChecks).filter(cb => cb.checked).length;
 
-            let iconClass = 'fas fa-times-circle text-danger';
+            let iconClass = 'bi bi-x-circle-fill text-danger';
             let allChecked = false;
 
             if (total > 0) {
                 if (checkedCount === total) {
-                    iconClass = 'fas fa-check-circle text-success';
+                    iconClass = 'bi bi-check-circle-fill text-success';
                     allChecked = true;
                 } else if (checkedCount > 0) {
-                    iconClass = 'fas fa-exclamation-triangle text-warning';
+                    iconClass = 'bi bi-clock-fill text-warning';
                 }
             } else {
                  if (mainCheck && mainCheck.checked) {
-                     iconClass = 'fas fa-check-circle text-success';
+                     iconClass = 'bi bi-check-circle-fill text-success';
                      allChecked = true;
                  }
             }
@@ -923,6 +1236,7 @@ document.addEventListener('DOMContentLoaded', function() {
             itemsInternos[item.label] = `<div class="checklist-item">
                                             <div class="checklist-item-icon"><i class="${iconClass}"></i></div>
                                             <span class="checklist-item-label">${item.label}</span>
+                                            ${total > 0 ? `<span class="checklist-item-count">${checkedCount}/${total}</span>` : ''}
                                          </div>`;
         });
 
@@ -956,6 +1270,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Renderiza o estado inicial do checklist
     updateAndRenderChecklist();
+
+    // --- LÓGICA DE MUDANÇA DE COR DOS SELECTS DE RISCO ---
+    const riskSelects = document.querySelectorAll('select[data-risk-select="true"]');
+    riskSelects.forEach(select => {
+        select.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const colorClass = selectedOption.getAttribute('data-class');
+            
+            // Remove todas as classes de cor
+            this.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'text-white', 'text-dark');
+            
+            // Adiciona a nova classe de cor se houver
+            if (colorClass) {
+                const classes = colorClass.split(' ');
+                classes.forEach(cls => this.classList.add(cls));
+            }
+        });
+        
+        // Aplica a cor inicial se já houver valor selecionado
+        if (select.value) {
+            const selectedOption = select.options[select.selectedIndex];
+            const colorClass = selectedOption.getAttribute('data-class');
+            if (colorClass) {
+                const classes = colorClass.split(' ');
+                classes.forEach(cls => select.classList.add(cls));
+            }
+        }
+    });
 
     // --- LÓGICA DO MODAL DE DETALHES DO LOG ---
     const logDetailModal = document.getElementById('logDetailModal');
@@ -1267,6 +1609,167 @@ document.addEventListener('DOMContentLoaded', function() {
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
       return new bootstrap.Tooltip(tooltipTriggerEl)
     });
+
+    // --- SISTEMA DE PIN ---
+    const pinBtn = document.getElementById('pinDocumentosBtn');
+    const rightColumn = document.getElementById('rightColumn');
+    
+    if (pinBtn && rightColumn) {
+        // Recupera estado salvo do localStorage
+        const isPinned = localStorage.getItem('rightColumnPinned') === 'true';
+        if (isPinned) {
+            rightColumn.classList.add('pinned');
+            pinBtn.setAttribute('title', 'Desafixar painel');
+        }
+        
+        pinBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            rightColumn.classList.toggle('pinned');
+            const pinned = rightColumn.classList.contains('pinned');
+            
+            console.log('Pin clicked! Pinned:', pinned);
+            console.log('Classes:', rightColumn.className);
+            
+            // Salva estado no localStorage
+            localStorage.setItem('rightColumnPinned', pinned);
+            
+            // Atualiza tooltip
+            pinBtn.setAttribute('title', pinned ? 'Desafixar painel' : 'Fixar painel');
+            
+            // Reinicializa tooltip do Bootstrap
+            const tooltip = bootstrap.Tooltip.getInstance(pinBtn);
+            if (tooltip) {
+                tooltip.dispose();
+            }
+            new bootstrap.Tooltip(pinBtn);
+        });
+    }
+
+    // --- VISUALIZADOR DE DOCUMENTOS ---
+    const documentViewer = document.getElementById('documentViewer');
+    const viewerContent = document.getElementById('viewerContent');
+    const viewerTitle = document.getElementById('viewerTitle');
+    const viewerOpenNew = document.getElementById('viewerOpenNew');
+    const viewerClose = document.getElementById('viewerClose');
+    const docPreviewBtns = document.querySelectorAll('.doc-preview-btn');
+    
+    docPreviewBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const docPath = this.getAttribute('data-doc-path');
+            const docName = this.getAttribute('data-doc-name');
+            const docExt = this.getAttribute('data-doc-ext');
+            
+            // Atualiza título e link
+            viewerTitle.textContent = docName;
+            viewerOpenNew.href = docPath;
+            
+            // Limpa conteúdo anterior
+            viewerContent.innerHTML = '';
+            
+            // Mostra o visualizador
+            documentViewer.style.display = 'block';
+            
+            // Carrega preview baseado na extensão
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(docExt)) {
+                // Preview de imagem
+                viewerContent.innerHTML = `
+                    <div class="text-center">
+                        <img src="${docPath}" alt="${docName}" class="img-fluid rounded" style="max-height: 450px;">
+                    </div>
+                `;
+            } else if (docExt === 'pdf') {
+                // Preview de PDF com múltiplas opções
+                const encodedPath = encodeURIComponent(window.location.origin + '/' + docPath.replace(/^\//, ''));
+                viewerContent.innerHTML = `
+                    <div class="d-flex justify-content-center mb-2">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary" onclick="loadPdfEmbed('${docPath}', '${docName}')">
+                                <i class="bi bi-window me-1"></i>Embed
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="loadPdfObject('${docPath}', '${docName}')">
+                                <i class="bi bi-file-pdf me-1"></i>Object
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary active" onclick="loadPdfDocs('${docPath}')">
+                                <i class="bi bi-google me-1"></i>Google Docs
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pdfViewerArea" style="width: 100%; height: 450px; border: none;">
+                        <iframe src="https://docs.google.com/viewer?url=${encodedPath}&embedded=true" style="width: 100%; height: 450px; border: none;"></iframe>
+                    </div>
+                `;
+            } else {
+                // Outros formatos - apenas link para download
+                viewerContent.innerHTML = `
+                    <div class="text-center p-5">
+                        <i class="bi bi-file-earmark" style="font-size: 4rem; color: #6c757d;"></i>
+                        <p class="mt-3 mb-2"><strong>${docName}</strong></p>
+                        <p class="text-muted small">Preview não disponível para este tipo de arquivo</p>
+                        <a href="${docPath}" target="_blank" class="btn btn-primary mt-2">
+                            <i class="bi bi-download me-1"></i>Download
+                        </a>
+                    </div>
+                `;
+            }
+            
+            // Scroll suave até o visualizador
+            documentViewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            // Destaca o botão ativo
+            docPreviewBtns.forEach(b => b.classList.remove('active', 'btn-primary'));
+            docPreviewBtns.forEach(b => b.classList.add('btn-outline-secondary'));
+            this.classList.remove('btn-outline-secondary');
+            this.classList.add('btn-primary', 'active');
+        });
+    });
+    
+    // Fechar visualizador
+    if (viewerClose) {
+        viewerClose.addEventListener('click', function() {
+            documentViewer.style.display = 'none';
+            // Remove destaque dos botões
+            docPreviewBtns.forEach(b => b.classList.remove('active', 'btn-primary'));
+            docPreviewBtns.forEach(b => b.classList.add('btn-outline-secondary'));
+        });
+    }
+
+    // --- FUNÇÕES PARA ALTERNAR VISUALIZAÇÃO DE PDF ---
+    window.loadPdfEmbed = function(path, name) {
+        const area = document.getElementById('pdfViewerArea');
+        area.innerHTML = `<embed src="${path}#toolbar=1&navpanes=0&scrollbar=1" type="application/pdf" width="100%" height="100%" />`;
+        updatePdfButtons(0);
+    };
+    
+    window.loadPdfObject = function(path, name) {
+        const area = document.getElementById('pdfViewerArea');
+        area.innerHTML = `<object data="${path}#toolbar=1&navpanes=0&scrollbar=1" type="application/pdf" width="100%" height="100%">
+            <p class="text-center p-4">
+                Navegador não suporta visualização de PDF. 
+                <a href="${path}" target="_blank" class="btn btn-sm btn-primary">Abrir PDF</a>
+            </p>
+        </object>`;
+        updatePdfButtons(1);
+    };
+    
+    window.loadPdfDocs = function(path) {
+        const area = document.getElementById('pdfViewerArea');
+        const encodedPath = encodeURIComponent(window.location.origin + '/' + path.replace(/^\//, ''));
+        area.innerHTML = `<iframe src="https://docs.google.com/viewer?url=${encodedPath}&embedded=true" style="width: 100%; height: 450px; border: none;"></iframe>`;
+        updatePdfButtons(2);
+    };
+    
+    function updatePdfButtons(activeIndex) {
+        const btnGroup = document.querySelector('.btn-group');
+        if (btnGroup) {
+            const buttons = btnGroup.querySelectorAll('button');
+            buttons.forEach((btn, idx) => {
+                btn.classList.remove('active');
+                if (idx === activeIndex) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+    }
 
 });
 </script>
