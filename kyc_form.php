@@ -2,6 +2,44 @@
 $page_title = 'Formulário de Know Your Customer (KYC)';
 require_once 'bootstrap.php';
 
+// --- TRATAMENTO DE TOKEN DE ACESSO DIRETO ---
+// Se houver um token na URL, busca o cliente e faz login automático
+$token_url = $_GET['token'] ?? null;
+$cliente_dados_token = null;
+
+if ($token_url && !isset($_SESSION['cliente_id'])) {
+    try {
+        $stmt_token = $pdo->prepare("
+            SELECT id, nome_completo as nome, cpf, email, id_empresa_master, telefone,
+                   token_expiracao
+            FROM kyc_clientes 
+            WHERE token_acesso = ? 
+            AND (token_expiracao IS NULL OR token_expiracao > NOW())
+            AND status = 'ativo'
+        ");
+        $stmt_token->execute([$token_url]);
+        $cliente_dados_token = $stmt_token->fetch(PDO::FETCH_ASSOC);
+        
+        if ($cliente_dados_token) {
+            // Faz login automático do cliente
+            $_SESSION['cliente_id'] = $cliente_dados_token['id'];
+            $_SESSION['cliente_nome'] = $cliente_dados_token['nome'];
+            $_SESSION['cliente_email'] = $cliente_dados_token['email'];
+            $_SESSION['cliente_cpf'] = $cliente_dados_token['cpf'];
+            $_SESSION['empresa_id'] = $cliente_dados_token['id_empresa_master'];
+            
+            // Log para debug
+            error_log("Cliente autenticado via token: ID {$cliente_dados_token['id']}, Nome: {$cliente_dados_token['nome']}");
+        } else {
+            // Token inválido ou expirado
+            error_log("Token inválido ou expirado: " . substr($token_url, 0, 10) . "...");
+        }
+    } catch (PDOException $e) {
+        error_log("Erro ao processar token de acesso: " . $e->getMessage());
+    }
+}
+// --- FIM DO TRATAMENTO DE TOKEN ---
+
 // --- CORREÇÃO: LÓGICA DE CONTEXTO PARA CLIENTE LOGADO ---
 // Se um cliente estiver logado, suas informações de sessão têm prioridade sobre a URL.
 if (isset($_SESSION['cliente_id'])) {

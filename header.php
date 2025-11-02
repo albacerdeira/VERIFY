@@ -157,6 +157,10 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                         </div>
                     </div>
                     
+                    <a href="<?= $path_prefix ?>leads.php" class="sidebar-nav-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
+                        <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
+                    </a>
+                    
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
                             <i class="bi bi-folder"></i> <span class="link-text">Gestão</span>
@@ -217,6 +221,10 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             </a>
                         </div>
                     </div>
+                    
+                    <a href="<?= $path_prefix ?>leads.php" class="sidebar-nav-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
+                        <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
+                    </a>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
