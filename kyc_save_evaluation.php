@@ -70,6 +70,36 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
+    // Se a decisão foi "Reprovado", atualiza o lead para 'perdido'
+    if ($action === 'submit_decision' && isset($analysis['decisao']) && $analysis['decisao'] === 'Reprovado') {
+        try {
+            // Busca o lead_id através do cliente
+            $stmt_lead = $pdo->prepare("
+                SELECT kc.lead_id 
+                FROM kyc_empresas ke
+                INNER JOIN kyc_clientes kc ON ke.cliente_id = kc.id
+                WHERE ke.id = ? AND kc.lead_id IS NOT NULL
+            ");
+            $stmt_lead->execute([$case_id]);
+            $lead_data = $stmt_lead->fetch(PDO::FETCH_ASSOC);
+            
+            if ($lead_data && $lead_data['lead_id']) {
+                $stmt_update = $pdo->prepare("UPDATE leads SET status = 'perdido' WHERE id = ?");
+                $stmt_update->execute([$lead_data['lead_id']]);
+                
+                // Registra no histórico do lead
+                $stmt_hist = $pdo->prepare(
+                    "INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at) " .
+                    "VALUES (?, ?, 'kyc_reprovado', 'KYC foi reprovado na análise', NOW())"
+                );
+                $stmt_hist->execute([$lead_data['lead_id'], $_SESSION['user_id']]);
+            }
+        } catch (PDOException $e) {
+            error_log("Erro ao atualizar status do lead para perdido: " . $e->getMessage());
+            // Não quebra o fluxo
+        }
+    }
+
     $_SESSION['flash_message'] = "Análise do caso #{$case_id} foi salva com sucesso.";
 
     if ($action === 'submit_decision') {

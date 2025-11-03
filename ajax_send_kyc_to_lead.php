@@ -21,6 +21,7 @@ $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
 $lead_id = $data['lead_id'] ?? null;
+$metodo_envio = $data['metodo'] ?? 'link'; // 'link', 'email', 'whatsapp'
 
 if (!$lead_id) {
     echo json_encode(['success' => false, 'message' => 'Lead ID não fornecido']);
@@ -62,83 +63,27 @@ try {
         exit;
     }
     
-    // Cria ou busca cliente KYC existente baseado no email do lead
-    $stmt_check = $pdo->prepare("SELECT id, status FROM kyc_clientes WHERE email = ?");
-    $stmt_check->execute([$lead['email']]);
-    $cliente_existente = $stmt_check->fetch(PDO::FETCH_ASSOC);
-    
-    if ($cliente_existente) {
-        $cliente_id = $cliente_existente['id'];
-        $mensagem_status = 'Cliente já existente localizado';
-        
-        // Garante que o status esteja 'ativo'
-        if ($cliente_existente['status'] !== 'ativo') {
-            $stmt_ativar = $pdo->prepare("UPDATE kyc_clientes SET status = 'ativo' WHERE id = ?");
-            $stmt_ativar->execute([$cliente_id]);
-        }
-    } else {
-        // Cria novo cliente KYC vinculado ao lead
-        // Senha temporária (lead pode redefinir depois)
-        $senha_temporaria = bin2hex(random_bytes(8)); // Gera senha aleatória de 16 caracteres
-        $senha_hash = password_hash($senha_temporaria, PASSWORD_DEFAULT);
-        
-        $stmt_create = $pdo->prepare("
-            INSERT INTO kyc_clientes (
-                nome_completo,
-                email,
-                telefone,
-                password,
-                id_empresa_master,
-                origem,
-                status,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, 'lead_conversion', 'ativo', NOW())
-        ");
-        
-        $stmt_create->execute([
-            $lead['nome'],
-            $lead['email'],
-            $lead['whatsapp'],
-            $senha_hash,
-            $lead['id_empresa_master']
-        ]);
-        
-        $cliente_id = $pdo->lastInsertId();
-        $mensagem_status = 'Novo cliente criado';
-        
-        // Atualiza lead com o ID do cliente criado
-        $stmt_update = $pdo->prepare("UPDATE leads SET crm_id = ? WHERE id = ?");
-        $stmt_update->execute(['cliente_kyc_' . $cliente_id, $lead_id]);
-    }
-    
-    // Gera token único para acesso direto ao formulário
-    $token = bin2hex(random_bytes(32));
-    
-    $stmt_token = $pdo->prepare("
-        UPDATE kyc_clientes 
-        SET token_acesso = ?,
-            token_expiracao = DATE_ADD(NOW(), INTERVAL 30 DAY)
-        WHERE id = ?
-    ");
-    $stmt_token->execute([$token, $cliente_id]);
-    
-    // Constrói URL do formulário KYC
+    // Constrói URL do formulário de Registro do Cliente
+    // O cliente_registro.php é onde o lead vai criar sua conta completa
+    // (nome, email, senha, CPF, selfie, etc.)
     $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'];
     $base_url .= dirname($_SERVER['PHP_SELF']);
     
+    // Usa cliente_registro.php que captura todos os dados do cliente
+    // IMPORTANTE: Inclui lead_id para fazer a associação Lead → Cliente
     if ($lead['empresa_slug']) {
-        $kyc_url = $base_url . "/kyc_form.php?cliente=" . urlencode($lead['empresa_slug']) . "&token=" . $token;
+        $kyc_url = $base_url . "/cliente_registro.php?cliente=" . urlencode($lead['empresa_slug']) . "&lead_id=" . $lead_id;
     } else {
-        $kyc_url = $base_url . "/kyc_form.php?token=" . $token;
+        $kyc_url = $base_url . "/cliente_registro.php?lead_id=" . $lead_id;
     }
     
     // Registra no histórico do lead
     $stmt_hist = $pdo->prepare("
         INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
-        VALUES (?, ?, 'kyc_enviado', ?, NOW())
+        VALUES (?, ?, 'cadastro_enviado', ?, NOW())
     ");
     
-    $descricao = "{$mensagem_status}. Link do formulário KYC gerado e enviado para {$lead['email']}. Cliente ID: {$cliente_id}";
+    $descricao = "Link do formulário de registro gerado para {$lead['email']}.";
     $stmt_hist->execute([$lead_id, $_SESSION['user_id'], $descricao]);
     
     // Atualiza status do lead para "contatado" se ainda estiver como "novo"
@@ -153,18 +98,160 @@ try {
         $stmt_hist2->execute([$lead_id, $_SESSION['user_id']]);
     }
     
-    // TODO: Enviar email com o link (integração futura)
-    // Pode usar PHPMailer que já existe no projeto
+    // ==================================================
+    // ENVIO DO LINK CONFORME MÉTODO ESCOLHIDO
+    // ==================================================
     
-    echo json_encode([
+    $envio_realizado = false;
+    $metodo_usado = '';
+    
+    if ($metodo_envio === 'email') {
+        // Envia por email usando PHPMailer
+        require_once 'PHPMailer/PHPMailer.php';
+        require_once 'PHPMailer/SMTP.php';
+        require_once 'PHPMailer/Exception.php';
+        
+        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+        
+        try {
+            // Configuração do servidor SMTP (usa config.php)
+            $mail->isSMTP();
+            $mail->Host = SMTP_HOST;
+            $mail->SMTPAuth = true;
+            $mail->Username = SMTP_USER;
+            $mail->Password = SMTP_PASS;
+            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port = SMTP_PORT;
+            $mail->CharSet = 'UTF-8';
+            
+            // Remetente e destinatário
+            $from_name = $lead['whitelabel_nome'] ?? SMTP_FROM_NAME;
+            $mail->setFrom(SMTP_FROM_EMAIL, $from_name);
+            $mail->addAddress($lead['email'], $lead['nome']);
+            
+            // Conteúdo do email
+            $mail->isHTML(true);
+            $mail->Subject = 'Complete seu cadastro - ' . ($lead['whitelabel_nome'] ?? 'Verify');
+            
+            $mail->Body = "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: #6f42c1; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+                    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+                    .button { display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+                    .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'>
+                        <h1>📋 Complete seu Cadastro</h1>
+                    </div>
+                    <div class='content'>
+                        <p>Olá <strong>{$lead['nome']}</strong>,</p>
+                        
+                        <p>Recebemos seu interesse em nossos serviços! Para dar continuidade ao processo, precisamos que você complete seu cadastro em nossa plataforma.</p>
+                        
+                        <p><strong>O que você precisa fazer?</strong><br>
+                        Preencher o formulário de registro com os dados da sua empresa e criar sua conta de acesso.</p>
+                        
+                        <p style='text-align: center;'>
+                            <a href='{$kyc_url}' class='button'>🚀 Completar Cadastro</a>
+                        </p>
+                        
+                        <p><small>Ou copie e cole este link no seu navegador:<br>
+                        <code>{$kyc_url}</code></small></p>
+                        
+                        <p>O preenchimento leva aproximadamente 10-15 minutos. Tenha em mãos os dados da sua empresa:</p>
+                        <ul>
+                            <li>📄 Dados da empresa (CNPJ, Razão Social)</li>
+                            <li>👤 Informações de contato</li>
+                            <li>� Criar uma senha de acesso</li>
+                        </ul>
+                        
+                        <p>Em caso de dúvidas, entre em contato conosco.</p>
+                        
+                        <p>Atenciosamente,<br>
+                        <strong>" . ($lead['whitelabel_nome'] ?? 'Equipe Verify') . "</strong></p>
+                    </div>
+                    <div class='footer'>
+                        <p>Este é um email automático, por favor não responda.<br>
+                        © " . date('Y') . " " . ($lead['whitelabel_nome'] ?? 'Verify KYC') . "</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            ";
+            
+            $mail->AltBody = "Olá {$lead['nome']},\n\nPara completar seu cadastro, acesse: {$kyc_url}\n\nAtenciosamente,\n" . ($lead['whitelabel_nome'] ?? 'Equipe Verify');
+            
+            $mail->send();
+            $envio_realizado = true;
+            $metodo_usado = 'Email';
+            
+            // Registra envio no histórico
+            $stmt_hist_envio = $pdo->prepare("
+                INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
+                VALUES (?, ?, 'email_enviado', 'Email com link de cadastro enviado para {$lead['email']}', NOW())
+            ");
+            $stmt_hist_envio->execute([$lead_id, $_SESSION['user_id']]);
+            
+        } catch (Exception $e) {
+            error_log("Erro ao enviar email: " . $mail->ErrorInfo);
+            // Continua mesmo se o email falhar, retorna o link manualmente
+        }
+        
+    } elseif ($metodo_envio === 'whatsapp') {
+        // Prepara mensagem para WhatsApp
+        $whatsapp_numero = preg_replace('/\D/', '', $lead['whatsapp']);
+        $mensagem_whatsapp = urlencode(
+            "Olá *{$lead['nome']}*!\n\n" .
+            "Para completar seu cadastro em nossa plataforma, acesse o formulário de registro:\n\n" .
+            "{$kyc_url}\n\n" .
+            "📝 _O preenchimento leva cerca de 10-15 minutos._\n\n" .
+            "Atenciosamente,\n" .
+            ($lead['whitelabel_nome'] ?? 'Equipe Verify')
+        );
+        
+        $whatsapp_url = "https://wa.me/55{$whatsapp_numero}?text={$mensagem_whatsapp}";
+        $envio_realizado = true;
+        $metodo_usado = 'WhatsApp';
+        
+        // Registra no histórico
+        $stmt_hist_envio = $pdo->prepare("
+            INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
+            VALUES (?, ?, 'whatsapp_preparado', 'Link de WhatsApp gerado para envio de cadastro ao lead', NOW())
+        ");
+        $stmt_hist_envio->execute([$lead_id, $_SESSION['user_id']]);
+    }
+    
+    // Resposta
+    $response = [
         'success' => true,
-        'message' => "Formulário KYC preparado com sucesso! {$mensagem_status}.",
+        'message' => "Link de cadastro gerado com sucesso!",
         'kyc_url' => $kyc_url,
-        'cliente_id' => $cliente_id,
-        'token' => $token
-    ]);
+        'metodo_envio' => $metodo_envio
+    ];
+    
+    if ($metodo_envio === 'email' && isset($envio_realizado) && $envio_realizado) {
+        $response['email_enviado'] = true;
+        $response['message'] = "✅ Email enviado com sucesso para {$lead['email']}!";
+    } elseif ($metodo_envio === 'email') {
+        $response['email_enviado'] = false;
+        $response['message'] = "⚠️ Email configurado mas não enviado. Use o link abaixo:";
+    } elseif ($metodo_envio === 'whatsapp' && isset($whatsapp_url)) {
+        $response['whatsapp_url'] = $whatsapp_url;
+        $response['message'] = "📱 Clique no botão para abrir WhatsApp e enviar a mensagem.";
+    }
+    
+    echo json_encode($response);
     
 } catch (PDOException $e) {
-    error_log("Erro ao enviar KYC para lead: " . $e->getMessage());
+    error_log("Erro ao enviar link de cadastro para lead: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Erro ao processar solicitação']);
 }

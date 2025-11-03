@@ -22,6 +22,10 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
     ]);
+    
+    // Define timezone do MySQL para horário de Brasília (GMT-3)
+    $pdo->exec("SET time_zone = '-03:00'");
+    
 } catch (PDOException $e) {
     error_log('FATAL: Erro de Conexão com o Banco de Dados: ' . $e->getMessage());
     http_response_code(500);

@@ -150,6 +150,30 @@ try {
     $stmt_log = $pdo->prepare("INSERT INTO kyc_log_atividades (kyc_empresa_id, usuario_id, usuario_nome, acao) VALUES (?, ?, ?, ?)");
     $stmt_log->execute([$submission_id, $log_usuario_id, $log_usuario_nome, $log_acao]);
     
+    // Atualiza status do lead para 'convertido' se veio de lead
+    if (isset($_SESSION['cliente_id'])) {
+        try {
+            $stmt_cliente = $pdo->prepare("SELECT lead_id FROM kyc_clientes WHERE id = ?");
+            $stmt_cliente->execute([$_SESSION['cliente_id']]);
+            $cliente_data = $stmt_cliente->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cliente_data && $cliente_data['lead_id']) {
+                $stmt_lead = $pdo->prepare("UPDATE leads SET status = 'convertido' WHERE id = ?");
+                $stmt_lead->execute([$cliente_data['lead_id']]);
+                
+                // Registra no histórico do lead
+                $stmt_hist = $pdo->prepare(
+                    "INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at) " .
+                    "VALUES (?, NULL, 'kyc_submetido', 'Lead completou e enviou o formulário KYC', NOW())"
+                );
+                $stmt_hist->execute([$cliente_data['lead_id']]);
+            }
+        } catch (PDOException $e) {
+            error_log("Erro ao atualizar status do lead: " . $e->getMessage());
+            // Não quebra o fluxo
+        }
+    }
+    
     $pdo->commit();
 
     $_SESSION['flash_message'] = "Recebemos suas informações com sucesso. Nossa equipe de compliance iniciará a análise.";

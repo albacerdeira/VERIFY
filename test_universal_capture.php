@@ -12,12 +12,22 @@ if (!$is_admin && !$is_superadmin) {
 
 // Pega o token da empresa
 $empresa_id = $is_superadmin && isset($_GET['empresa_id']) ? (int)$_GET['empresa_id'] : (int)$_SESSION['empresa_id'];
-$stmt = $pdo->prepare("SELECT api_token, nome_empresa FROM configuracoes_whitelabel WHERE empresa_id = ?");
+
+// DEBUG
+error_log("TEST_UNIVERSAL_CAPTURE - empresa_id: $empresa_id");
+error_log("TEST_UNIVERSAL_CAPTURE - SESSION empresa_id: " . ($_SESSION['empresa_id'] ?? 'NOT SET'));
+error_log("TEST_UNIVERSAL_CAPTURE - is_superadmin: " . ($is_superadmin ? 'true' : 'false'));
+
+$stmt = $pdo->prepare("SELECT api_token, nome_empresa, empresa_id, website_url, cor_variavel FROM configuracoes_whitelabel WHERE empresa_id = ?");
 $stmt->execute([$empresa_id]);
 $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
+error_log("TEST_UNIVERSAL_CAPTURE - config encontrada: " . json_encode($config));
+
 $api_token = $config['api_token'] ?? null;
 $nome_empresa = $config['nome_empresa'] ?? 'Empresa';
+$website_url = $config['website_url'] ?? null;
+$cor_variavel = $config['cor_variavel'] ?? '#0d6efd';
 
 require_once 'header.php';
 ?>
@@ -25,69 +35,72 @@ require_once 'header.php';
 <div class="container mt-4">
     <div class="row mb-4">
         <div class="col-12">
-            <h2><i class="bi bi-bug-fill text-warning"></i> Teste de Captura Universal de Formulários</h2>
-            <p class="text-muted">Teste o funcionamento do script em tempo real</p>
+            <h2><i class="bi bi-check2-circle text-success"></i> Validação de Instalação do Script</h2>
+            <p class="text-muted">Verifique se o script está instalado e funcionando corretamente no seu site - Empresa: <?= htmlspecialchars($nome_empresa) ?></p>
         </div>
     </div>
 
     <?php if (empty($api_token)): ?>
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle"></i> <strong>Token não encontrado!</strong>
-        <p class="mb-0">Você precisa gerar um token API primeiro em <a href="configuracoes.php">Configurações > Sistema de Leads API</a></p>
+    <div class="alert alert-danger border-danger">
+        <h4><i class="bi bi-exclamation-triangle-fill"></i> Token API não configurado!</h4>
+        <hr>
+        <p><strong>Empresa:</strong> <?= htmlspecialchars($nome_empresa) ?> (ID: <?= $empresa_id ?>)</p>
+        <p class="mb-3">Esta empresa ainda não possui um token API configurado. Sem o token, o script de captura universal não pode funcionar.</p>
+        <div class="d-grid gap-2">
+            <a href="configuracoes.php<?= $is_superadmin ? '?id=' . $empresa_id : '' ?>" class="btn btn-danger btn-lg">
+                <i class="bi bi-gear-fill"></i> Ir para Configurações e Gerar Token
+            </a>
+        </div>
+        <hr class="mt-3">
+        <p class="mb-0 small text-muted">
+            <i class="bi bi-info-circle"></i> Vá em <strong>Configurações > Sistema de Leads API</strong> e clique em <strong>"Gerar Novo Token"</strong>
+        </p>
     </div>
-    <?php else: ?>
+    <?php 
+    // Para aqui - não carrega o resto da página
+    require_once 'footer.php';
+    exit;
+    ?>
+    <?php endif; ?>
 
-    <!-- Status do Script -->
-    <div class="row mb-4">
+<!--verificação do site-->
+<div class="row mb-4">
         <div class="col-md-12">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <strong><i class="bi bi-check-circle"></i> Status do Script</strong>
+            <div class="card" style="border-color: <?= htmlspecialchars($cor_variavel) ?>;">
+                <div class="card-header text-white" style="background-color: <?= htmlspecialchars($cor_variavel) ?>;">
+                    <strong><i class="bi bi-globe"></i> Verificar Instalação no Seu Site</strong>
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i> <strong>Teste se o script está instalado corretamente no seu site</strong>
+                        <p class="mb-0 small mt-2">Informe a URL do seu site e verificaremos se o script de captura está ativo (similar ao Google Tag Assistant).</p>
+                    </div>
+
                     <div class="row">
-                        <div class="col-md-3">
-                            <div class="text-center p-3">
-                                <div class="spinner-border text-secondary" role="status" id="statusLoading">
-                                    <span class="visually-hidden">Verificando...</span>
-                                </div>
-                                <div id="statusScript" style="display: none;">
-                                    <i class="bi bi-x-circle-fill text-danger fs-1" id="iconError"></i>
-                                    <i class="bi bi-check-circle-fill text-success fs-1" id="iconSuccess"></i>
-                                </div>
-                                <p class="small mt-2 mb-0"><strong>Script Carregado</strong></p>
+                        <div class="col-md-9">
+                            <div class="mb-3">
+                                <label for="website_url_check" class="form-label">URL do seu site:</label>
+                                <input type="url" class="form-control form-control-lg" id="website_url_check" 
+                                       value="<?= htmlspecialchars($website_url ?? '') ?>"
+                                       placeholder="https://seusite.com.br">
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center p-3">
-                                <div id="tokenStatus">
-                                    <i class="bi bi-question-circle text-muted fs-1"></i>
-                                </div>
-                                <p class="small mt-2 mb-0"><strong>Token Válido</strong></p>
-                            </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-lg w-100 mb-3 text-white" style="background-color: <?= htmlspecialchars($cor_variavel) ?>;" onclick="checkInstallation()" id="btnCheck">
+                                <i class="bi bi-search"></i> Verificar
+                            </button>
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-center p-3">
-                                <div id="formsCount">
-                                    <span class="fs-1 fw-bold text-primary">0</span>
-                                </div>
-                                <p class="small mt-2 mb-0"><strong>Forms Detectados</strong></p>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="text-center p-3">
-                                <div id="captureCount">
-                                    <span class="fs-1 fw-bold text-success">0</span>
-                                </div>
-                                <p class="small mt-2 mb-0"><strong>Leads Capturados</strong></p>
-                            </div>
-                        </div>
+                    </div>
+
+                    <!-- Resultado da Verificação -->
+                    <div id="checkResult" style="display: none;">
+                        <hr>
+                        <div id="checkResultContent"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
     <!-- Console de Logs -->
     <div class="row mb-4">
         <div class="col-md-12">
@@ -98,20 +111,78 @@ require_once 'header.php';
                         <i class="bi bi-trash"></i> Limpar
                     </button>
                 </div>
-                <div class="card-body bg-dark text-light font-monospace small" style="height: 300px; overflow-y: auto;" id="consoleLog">
+                <div class="card-body bg-dark text-light font-monospace small" style="height: 150px; overflow-y: auto;" id="consoleLog">
                     <div class="text-muted">Aguardando logs...</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Formulários de Teste -->
+    <!-- Status do Sistema (menor, recolhido por padrão) -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="accordion" id="accordionSystemStatus">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingSystemStatus">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#collapseSystemStatus" aria-expanded="false">
+                            <i class="bi bi-gear me-2"></i> Status do Sistema
+                        </button>
+                    </h2>
+                    <div id="collapseSystemStatus" class="accordion-collapse collapse" data-bs-parent="#accordionSystemStatus">
+                        <div class="accordion-body">
+                            <div class="row text-center">
+                                <div class="col-md-4">
+                                    <div class="p-3">
+                                        <div class="spinner-border text-secondary" role="status" id="statusLoading">
+                                            <span class="visually-hidden">Verificando...</span>
+                                        </div>
+                                        <div id="statusScript" style="display: none;">
+                                            <i class="bi bi-x-circle-fill text-danger fs-1" id="iconError"></i>
+                                            <i class="bi bi-check-circle-fill text-success fs-1" id="iconSuccess"></i>
+                                        </div>
+                                        <p class="small mt-2 mb-0"><strong>Script Carregado</strong></p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="p-3">
+                                        <div id="tokenStatus">
+                                            <i class="bi bi-question-circle text-muted fs-1"></i>
+                                        </div>
+                                        <p class="small mt-2 mb-0"><strong>Token Válido</strong></p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="p-3">
+                                        <div id="captureCount">
+                                            <span class="fs-1 fw-bold text-success">0</span>
+                                        </div>
+                                        <p class="small mt-2 mb-0"><strong>Leads Capturados</strong></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <!-- Formulários de Teste (apenas se não tiver website_url configurado) -->
+    <?php if (empty($website_url)): ?>
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> <strong>Configure a URL do seu site</strong>
+        <p class="mb-0">Vá em <a href="configuracoes.php<?= $is_superadmin ? '?id=' . $empresa_id : '' ?>">Configurações</a> e preencha o campo "URL do Site da Empresa" para testar a instalação no site real.</p>
+    </div>
+    <?php endif; ?>
+
     <div class="row mb-4">
         <div class="col-md-6">
-            <div class="card border-success">
-                <div class="card-header bg-success text-white">
+            <div class="card" style="border-color: <?= htmlspecialchars($cor_variavel) ?>;">
+                <div class="card-header text-white" style="background-color: <?= htmlspecialchars($cor_variavel) ?>;">
                     <strong><i class="bi bi-file-earmark-text"></i> Formulário de Teste #1</strong>
-                    <span class="badge bg-light text-success float-end">Completo</span>
+                    <span class="badge bg-light text-dark float-end">Completo</span>
                 </div>
                 <div class="card-body">
                     <form id="testForm1" class="test-form">
@@ -131,7 +202,7 @@ require_once 'header.php';
                             <label for="empresa1" class="form-label">Empresa</label>
                             <input type="text" class="form-control" id="empresa1" name="empresa" placeholder="Empresa XYZ">
                         </div>
-                        <button type="submit" class="btn btn-success w-100">
+                        <button type="submit" class="btn w-100 text-white" style="background-color: <?= htmlspecialchars($cor_variavel) ?>;">
                             <i class="bi bi-send"></i> Enviar Formulário #1
                         </button>
                     </form>
@@ -140,10 +211,10 @@ require_once 'header.php';
         </div>
 
         <div class="col-md-6">
-            <div class="card border-warning">
-                <div class="card-header bg-warning text-dark">
+            <div class="card border-secondary">
+                <div class="card-header bg-secondary text-white">
                     <strong><i class="bi bi-file-earmark-text"></i> Formulário de Teste #2</strong>
-                    <span class="badge bg-dark float-end">Mínimo</span>
+                    <span class="badge bg-light text-dark float-end">Mínimo</span>
                 </div>
                 <div class="card-body">
                     <form id="testForm2" class="test-form">
@@ -159,7 +230,7 @@ require_once 'header.php';
                             <label for="phone" class="form-label">Telefone</label>
                             <input type="text" class="form-control" id="phone" name="phone" placeholder="11988888888">
                         </div>
-                        <button type="submit" class="btn btn-warning w-100">
+                        <button type="submit" class="btn btn-secondary w-100">
                             <i class="bi bi-send"></i> Enviar Formulário #2
                         </button>
                     </form>
@@ -185,8 +256,8 @@ require_once 'header.php';
     <!-- Últimos Leads Capturados -->
     <div class="row mb-4">
         <div class="col-md-12">
-            <div class="card">
-                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+            <div class="card" style="border-color: <?= htmlspecialchars($cor_variavel) ?>;">
+                <div class="card-header text-white d-flex justify-content-between align-items-center" style="background-color: <?= htmlspecialchars($cor_variavel) ?>;">
                     <strong><i class="bi bi-list-check"></i> Últimos Leads Capturados (Tempo Real)</strong>
                     <button class="btn btn-sm btn-outline-light" onclick="refreshLeads()">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar
@@ -204,7 +275,6 @@ require_once 'header.php';
         </div>
     </div>
 
-    <?php endif; ?>
 </div>
 
 <!-- Script Universal com Token -->
@@ -263,6 +333,32 @@ function escapeHtml(text) {
 
 function clearLogs() {
     consoleLogElement.innerHTML = '<div class="text-muted">Aguardando logs...</div>';
+}
+
+// Copia código para clipboard
+function copyCode(elementId) {
+    const codeElement = document.getElementById(elementId);
+    const code = codeElement.textContent;
+    
+    navigator.clipboard.writeText(code).then(() => {
+        // Feedback visual
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check"></i> Copiado!';
+        btn.classList.remove('btn-outline-success');
+        btn.classList.add('btn-success');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-success');
+        }, 2000);
+        
+        addLog('[INFO] ✅ Código copiado para a área de transferência!');
+    }).catch(err => {
+        alert('Erro ao copiar código. Por favor, copie manualmente.');
+        console.error('Erro ao copiar:', err);
+    });
 }
 
 // Verifica se o script carregou
@@ -327,6 +423,200 @@ function autoFill() {
         document.getElementById('testForm1').dispatchEvent(new Event('submit'));
     }, 1000);
 }
+
+// Verifica instalação no site real
+function checkInstallation() {
+    const url = document.getElementById('website_url_check').value.trim();
+    const btnCheck = document.getElementById('btnCheck');
+    const resultDiv = document.getElementById('checkResult');
+    const resultContent = document.getElementById('checkResultContent');
+    
+    if (!url) {
+        alert('Por favor, informe a URL do seu site');
+        return;
+    }
+    
+    // Mostra loading
+    btnCheck.disabled = true;
+    btnCheck.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verificando...';
+    resultDiv.style.display = 'none';
+    
+    // Faz requisição AJAX
+    fetch('ajax_check_script_installation.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        credentials: 'same-origin', // IMPORTANTE: Envia cookies de sessão
+        body: 'website_url=' + encodeURIComponent(url) + '&empresa_id=<?= $empresa_id ?>'
+    })
+    .then(response => {
+        // Debug: mostra o conteúdo bruto da resposta
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        
+        // Tenta ler como texto primeiro
+        return response.text().then(text => {
+            console.log('Response text:', text);
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error('Resposta não é JSON válido: ' + text.substring(0, 200));
+            }
+        });
+    })
+    .then(data => {
+        btnCheck.disabled = false;
+        btnCheck.innerHTML = '<i class="bi bi-search"></i> Verificar';
+        resultDiv.style.display = 'block';
+        
+        if (data.success) {
+            let statusClass = 'success';
+            let statusIcon = 'check-circle-fill';
+            
+            if (!data.script_installed) {
+                statusClass = 'danger';
+                statusIcon = 'x-circle-fill';
+            } else if (!data.token_correct) {
+                statusClass = 'warning';
+                statusIcon = 'exclamation-triangle-fill';
+            }
+            
+            resultContent.innerHTML = `
+                <div class="alert alert-${statusClass} border-${statusClass}">
+                    <h5><i class="bi bi-${statusIcon}"></i> ${data.message}</h5>
+                    <p class="mb-2">${data.details}</p>
+                    ${data.action ? `<p class="mb-0"><strong>Ação necessária:</strong> ${data.action}</p>` : ''}
+                </div>
+                
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <i class="bi bi-${data.script_installed ? 'check-circle-fill text-success' : 'x-circle-fill text-danger'} fs-1"></i>
+                            <p class="small mb-0 mt-2"><strong>Script Detectado</strong></p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <i class="bi bi-${data.token_correct ? 'check-circle-fill text-success' : 'x-circle-fill text-danger'} fs-1"></i>
+                            <p class="small mb-0 mt-2"><strong>Token Correto</strong></p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <span class="fs-1 fw-bold text-primary">${data.form_count}</span>
+                            <p class="small mb-0 mt-2"><strong>Formulários</strong></p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded">
+                            <i class="bi bi-clock-fill text-info fs-1"></i>
+                            <p class="small mb-0 mt-2"><strong>${data.timestamp}</strong></p>
+                        </div>
+                    </div>
+                </div>
+                
+                ${data.script_url ? `
+                    <div class="mt-3">
+                        <strong>Script encontrado:</strong>
+                        <pre class="bg-light p-2 rounded"><code>${data.script_url}</code></pre>
+                    </div>
+                ` : ''}
+                
+                ${data.forms_details && data.forms_details.length > 0 ? `
+                    <div class="mt-4">
+                        <h5><i class="bi bi-list-check"></i> Formulários Detectados</h5>
+                        <div class="accordion" id="accordionForms">
+                            ${data.forms_details.map((form, idx) => `
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="heading${idx}">
+                                        <button class="accordion-button ${idx > 0 ? 'collapsed' : ''}" type="button" 
+                                                data-bs-toggle="collapse" data-bs-target="#collapse${idx}">
+                                            <i class="bi bi-file-earmark-text me-2"></i>
+                                            <strong>Formulário #${form.index}</strong>
+                                            ${form.id ? ` - ID: <code>${form.id}</code>` : ''}
+                                            ${form.name ? ` - Name: <code>${form.name}</code>` : ''}
+                                            <span class="badge bg-primary ms-2">${form.inputs.length} campos</span>
+                                        </button>
+                                    </h2>
+                                    <div id="collapse${idx}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" 
+                                         data-bs-parent="#accordionForms">
+                                        <div class="accordion-body">
+                                            <div class="row mb-2">
+                                                <div class="col-md-6">
+                                                    <strong>Action:</strong> ${form.action || '(mesma página)'}
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <strong>Method:</strong> <span class="badge bg-secondary">${form.method}</span>
+                                                </div>
+                                            </div>
+                                            <hr>
+                                            <strong>Campos detectados:</strong>
+                                            <table class="table table-sm table-hover mt-2">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Tag</th>
+                                                        <th>Type</th>
+                                                        <th>Name</th>
+                                                        <th>ID</th>
+                                                        <th>Placeholder</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    ${form.inputs.map(input => `
+                                                        <tr>
+                                                            <td><span class="badge bg-info">${input.tag}</span></td>
+                                                            <td><code>${input.type}</code></td>
+                                                            <td><code>${input.name || '-'}</code></td>
+                                                            <td><code>${input.id || '-'}</code></td>
+                                                            <td class="small">${input.placeholder || '-'}</td>
+                                                        </tr>
+                                                    `).join('')}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+            
+            addLog(`[VERIFICAÇÃO] ${data.message}`);
+            addLog(`[VERIFICAÇÃO] URL: ${url}`);
+            addLog(`[VERIFICAÇÃO] Formulários: ${data.form_count}`);
+            
+            // Log dos formulários encontrados
+            if (data.forms_details && data.forms_details.length > 0) {
+                data.forms_details.forEach((form, idx) => {
+                    addLog(`[FORMULÁRIO #${idx + 1}] ${form.inputs.length} campos: ${form.inputs.map(i => i.name || i.id).join(', ')}`);
+                });
+            }
+        } else {
+            resultContent.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5><i class="bi bi-exclamation-triangle-fill"></i> Erro na Verificação</h5>
+                    <p class="mb-0">${data.error}</p>
+                </div>
+            `;
+            addLog(`[VERIFICAÇÃO] ❌ Erro: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        btnCheck.disabled = false;
+        btnCheck.innerHTML = '<i class="bi bi-search"></i> Verificar';
+        resultDiv.style.display = 'block';
+        resultContent.innerHTML = `
+            <div class="alert alert-danger">
+                <h5><i class="bi bi-exclamation-triangle-fill"></i> Erro de Conexão</h5>
+                <p class="mb-0">Não foi possível verificar o site. Tente novamente.</p>
+            </div>
+        `;
+        addLog(`[VERIFICAÇÃO] ❌ Erro de conexão: ${error}`);
+    });
+}
+
 
 // Previne submit real (para não recarregar a página)
 document.querySelectorAll('.test-form').forEach(form => {

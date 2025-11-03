@@ -77,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nome_empresa = trim($_POST['nome_empresa']);
         $cor_variavel = trim($_POST['cor_variavel']);
         $google_tag_manager_id = trim($_POST['google_tag_manager_id']);
+        $website_url = trim($_POST['website_url']);
         $logo_path = $_POST['current_logo'] ?? '';
         $slug = $_POST['slug'] ?? ''; 
 
@@ -91,8 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else { throw new Exception("Falha ao mover o arquivo de logo enviado."); }
             }
 
-            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id";
-            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':id' => $empresa_id_post];
+            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id, website_url = :website";
+            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':website' => $website_url, ':id' => $empresa_id_post];
 
             if ($is_superadmin || empty($config_atual['slug'])) {
                 if (empty($slug)) throw new Exception("O campo Slug é obrigatório.");
@@ -220,6 +221,19 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                     </div>
 
                     <div class="form-group mb-3">
+                        <label for="website_url" class="form-label">
+                            <i class="bi bi-globe"></i> URL do Site da Empresa
+                        </label>
+                        <input type="url" class="form-control" id="website_url" name="website_url" 
+                               value="<?= htmlspecialchars($config['website_url'] ?? '') ?>" 
+                               placeholder="https://seusite.com.br">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i> URL completa do site onde o script será instalado. 
+                            Usado para testar a captura de formulários na página de teste.
+                        </small>
+                    </div>
+
+                    <div class="form-group mb-3">
                         <label for="cor_variavel" class="form-label">Cor Principal</label>
                         <input type="color" class="form-control form-control-color" id="cor_variavel" name="cor_variavel" value="<?= htmlspecialchars($config['cor_variavel'] ?? '#4f46e5') ?>">
                     </div>
@@ -243,18 +257,186 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i> <strong>Sobre este sistema:</strong> 
                     Captura leads do seu site e converte automaticamente em clientes KYC com um único clique.
+                    <a href="sistema_leads_info.php" class="btn btn-sm btn-outline-primary float-end" target="_blank">
+                        <i class="bi bi-book"></i> Documentação Completa
+                    </a>
                 </div>
 
                 <div class="accordion" id="accordionLeadsSystem">
                     
-                    <!-- 1. Formulário de Captura -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingCaptura">
-                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCaptura" aria-expanded="true" aria-controls="collapseCaptura">
-                                <i class="bi bi-clipboard-data me-2"></i> 1. Formulário de Captura de Leads
+                    <!-- 1. Captura Universal de Formulários (CÓDIGO DE INSTALAÇÃO) -->
+                    <div class="accordion-item border-success">
+                        <h2 class="accordion-header" id="headingUniversalCapture">
+                            <button class="accordion-button bg-success text-white" type="button" data-bs-toggle="collapse" data-bs-target="#collapseUniversalCapture" aria-expanded="true" aria-controls="collapseUniversalCapture">
+                                <i class="bi bi-code-slash me-2"></i> 1. Captura Universal de Formulários - Código de Instalação
                             </button>
                         </h2>
-                        <div id="collapseCaptura" class="accordion-collapse collapse show" aria-labelledby="headingCaptura" data-bs-parent="#accordionLeadsSystem">
+                        <div id="collapseUniversalCapture" class="accordion-collapse collapse show" aria-labelledby="headingUniversalCapture" data-bs-parent="#accordionLeadsSystem">
+                            <div class="accordion-body">
+                                <div class="alert alert-success">
+                                    <i class="bi bi-stars"></i> <strong>Capture TODOS os formulários do seu site com apenas 1 linha de código!</strong>
+                                    <p class="mb-0 mt-2 small">O script universal detecta automaticamente qualquer formulário HTML e envia os leads para o sistema Verify.</p>
+                                </div>
+
+                                <?php if (!empty($config_atual['api_token'])): 
+                                    // Gera a URL completa do script com o token já configurado
+                                    $script_url = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . 
+                                                  $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/') . 
+                                                  '/verify-universal-form-capture.js?token=' . urlencode($config_atual['api_token']);
+                                ?>
+
+                                <!-- Abas para diferentes plataformas -->
+                                <ul class="nav nav-pills nav-fill mb-3" id="installTabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="html-tab" data-bs-toggle="pill" data-bs-target="#html" type="button">
+                                            <i class="bi bi-filetype-html"></i> HTML Puro
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="wordpress-tab" data-bs-toggle="pill" data-bs-target="#wordpress" type="button">
+                                            <i class="bi bi-wordpress"></i> WordPress
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="cms-tab" data-bs-toggle="pill" data-bs-target="#cms" type="button">
+                                            <i class="bi bi-gear"></i> Outros CMS
+                                        </button>
+                                    </li>
+                                </ul>
+
+                                <div class="tab-content" id="installTabContent">
+                                    <!-- HTML Puro -->
+                                    <div class="tab-pane fade show active" id="html" role="tabpanel">
+                                        <div class="card border-success">
+                                            <div class="card-header bg-success text-white">
+                                                <strong><i class="bi bi-code-slash"></i> Código para HTML/PHP</strong>
+                                            </div>
+                                            <div class="card-body">
+                                                <p class="small mb-2"><i class="bi bi-info-circle"></i> Cole este código antes do <code>&lt;/body&gt;</code> em todas as páginas</p>
+                                                <div class="position-relative">
+                                                    <pre class="bg-dark text-light p-3 rounded mb-0"><code>&lt;!-- Verify Lead Capture Script --&gt;
+&lt;script src="<?= htmlspecialchars($script_url) ?>"&gt;&lt;/script&gt;</code></pre>
+                                                    <button class="btn btn-sm btn-success position-absolute top-0 end-0 m-2" 
+                                                            onclick="copyScriptCode('<?= htmlspecialchars(addslashes('<script src="' . $script_url . '"></script>')) ?>')">
+                                                        <i class="bi bi-clipboard"></i> Copiar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- WordPress -->
+                                    <div class="tab-pane fade" id="wordpress" role="tabpanel">
+                                        <div class="card border-primary">
+                                            <div class="card-header bg-primary text-white">
+                                                <strong><i class="bi bi-wordpress"></i> Instalação WordPress</strong>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="alert alert-info">
+                                                    <strong>Opção 1: Plugin "Insert Headers and Footers"</strong>
+                                                    <ol class="mb-0 mt-2">
+                                                        <li>Instale o plugin "Insert Headers and Footers"</li>
+                                                        <li>Vá em <strong>Configurações → Insert Headers and Footers</strong></li>
+                                                        <li>Cole o código abaixo na seção <strong>"Scripts in Footer"</strong></li>
+                                                    </ol>
+                                                </div>
+                                                <div class="position-relative">
+                                                    <pre class="bg-dark text-light p-3 rounded mb-0"><code>&lt;!-- Verify Lead Capture Script --&gt;
+&lt;script src="<?= htmlspecialchars($script_url) ?>"&gt;&lt;/script&gt;</code></pre>
+                                                    <button class="btn btn-sm btn-primary position-absolute top-0 end-0 m-2" 
+                                                            onclick="copyScriptCode('<?= htmlspecialchars(addslashes('<script src="' . $script_url . '"></script>')) ?>')">
+                                                        <i class="bi bi-clipboard"></i> Copiar
+                                                    </button>
+                                                </div>
+                                                <div class="alert alert-warning mt-3 mb-0">
+                                                    <strong>Opção 2: Tema (functions.php)</strong>
+                                                    <p class="mb-0 small">Ou adicione no arquivo <code>functions.php</code> do seu tema usando <code>wp_footer</code> hook.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Outros CMS -->
+                                    <div class="tab-pane fade" id="cms" role="tabpanel">
+                                        <div class="card border-warning">
+                                            <div class="card-header bg-warning">
+                                                <strong><i class="bi bi-gear"></i> Instalação em Outros CMS</strong>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="alert alert-info">
+                                                    <strong>Para outros CMS (Joomla, Drupal, Wix, etc):</strong>
+                                                    <p class="mb-0">Procure a opção de adicionar "Scripts personalizados" ou "Código no rodapé" nas configurações do seu CMS e cole o código abaixo:</p>
+                                                </div>
+                                                <div class="position-relative">
+                                                    <pre class="bg-dark text-light p-3 rounded mb-3"><code>&lt;!-- Verify Lead Capture Script --&gt;
+&lt;script src="<?= htmlspecialchars($script_url) ?>"&gt;&lt;/script&gt;</code></pre>
+                                                    <button class="btn btn-sm btn-warning position-absolute top-0 end-0 m-2" 
+                                                            onclick="copyScriptCode('<?= htmlspecialchars(addslashes('<script src="' . $script_url . '"></script>')) ?>')">
+                                                        <i class="bi bi-clipboard"></i> Copiar
+                                                    </button>
+                                                </div>
+                                                <h6 class="small"><strong>Instruções específicas:</strong></h6>
+                                                <ul class="small mb-0">
+                                                    <li><strong>Wix:</strong> Settings → Custom Code → Add Code to Footer</li>
+                                                    <li><strong>Shopify:</strong> Online Store → Themes → Edit Code → theme.liquid (antes de &lt;/body&gt;)</li>
+                                                    <li><strong>Squarespace:</strong> Settings → Advanced → Code Injection → Footer</li>
+                                                    <li><strong>Joomla:</strong> Extensions → Templates → Seu Template → Personalizar</li>
+                                                    <li><strong>Drupal:</strong> Appearance → Settings → Scripts customizados</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-success mt-3">
+                                    <h6><i class="bi bi-check-circle-fill"></i> Funciona automaticamente com:</h6>
+                                    <div class="row small">
+                                        <div class="col-md-6">
+                                            <ul>
+                                                <li>✅ Contact Form 7 (WordPress)</li>
+                                                <li>✅ Elementor Pro Forms</li>
+                                                <li>✅ WPForms</li>
+                                                <li>✅ Gravity Forms</li>
+                                            </ul>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <ul>
+                                                <li>✅ HTML puro</li>
+                                                <li>✅ Formulários AJAX</li>
+                                                <li>✅ Popups e modals</li>
+                                                <li>✅ Qualquer formulário HTML!</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="d-grid gap-2 mt-3">
+                                    <a href="test_universal_capture.php" class="btn btn-lg btn-primary" target="_blank">
+                                        <i class="bi bi-check2-circle"></i> Validar Instalação no Seu Site
+                                    </a>
+                                    <small class="text-muted text-center">
+                                        <i class="bi bi-info-circle"></i> Teste se o script está instalado corretamente (similar ao Google Tag Assistant)
+                                    </small>
+                                </div>
+
+                                <?php else: ?>
+                                <div class="alert alert-warning">
+                                    <i class="bi bi-exclamation-triangle"></i> <strong>Token não encontrado!</strong>
+                                    <p class="mb-0 small">Você precisa gerar um token API primeiro na seção <strong>"Sistema de Leads API"</strong> abaixo.</p>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Formulário de Captura de Leads Whitelabel -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingCaptura">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCaptura" aria-expanded="false" aria-controls="collapseCaptura">
+                                <i class="bi bi-clipboard-data me-2"></i> 2. Formulário de Captura de Leads Whitelabel
+                            </button>
+                        </h2>
+                        <div id="collapseCaptura" class="accordion-collapse collapse" aria-labelledby="headingCaptura" data-bs-parent="#accordionLeadsSystem">
                             <div class="accordion-body">
                                 <p><strong>Página pública para capturar interessados em sua plataforma.</strong></p>
                                 
@@ -291,6 +473,57 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                                     </div>
                                 </div>
 
+                               
+
+                                <!-- API Token Section -->
+                                <?php if ($config_atual && isset($config_atual['api_token'])): ?>
+                                <div class="alert alert-warning mt-3">
+                                    <h6><i class="bi bi-shield-lock"></i> Token de API (Autenticação)</h6>
+                                    <p class="mb-2">Use este token para autenticar requisições ao webhook:</p>
+                                    <div class="input-group mb-2">
+                                        <input type="password" class="form-control font-monospace" id="apiToken" 
+                                               value="<?= htmlspecialchars($config_atual['api_token']) ?>" 
+                                               readonly>
+                                        <button class="btn btn-outline-secondary" onclick="toggleApiToken()" id="toggleTokenBtn">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('apiToken')">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">
+                                        <i class="bi bi-info-circle"></i> 
+                                        Envie no header: <code>Authorization: Bearer SEU_TOKEN</code>
+                                        <br>
+                                        Rate Limit: <strong><?= $config_atual['api_rate_limit'] ?? 100 ?> requisições/hora</strong>
+                                        <?php if ($config_atual['api_ultimo_uso']): ?>
+                                        | Último uso: <strong><?= date('d/m/Y H:i', strtotime($config_atual['api_ultimo_uso'])) ?></strong>
+                                        <?php endif; ?>
+                                    </small>
+                                </div>
+                                <?php endif; ?>
+
+                                <div class="mt-3">
+                                    <a href="lead_form.php" class="btn btn-primary btn-sm" target="_blank">
+                                        <i class="bi bi-box-arrow-up-right"></i> Visualizar Formulário
+                                    </a>
+                                    <a href="api_lead_webhook.php" class="btn btn-outline-info btn-sm" target="_blank">
+                                        <i class="bi bi-code-square"></i> Documentação API
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Gestão de Leads -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingGestao">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGestao" aria-expanded="false" aria-controls="collapseGestao">
+                                <i class="bi bi-people me-2"></i> 2. Webhook de Gestão de Leads
+                            </button>
+                        </h2>
+                        <div id="collapseGestao" class="accordion-collapse collapse" aria-labelledby="headingGestao" data-bs-parent="#accordionLeadsSystem">
+                            <div class="accordion-body">
                                 <!-- API Token Management Section -->
                                 <div class="card mt-4 border-warning">
                                     <div class="card-header bg-warning bg-opacity-10">
@@ -394,87 +627,6 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                                     </ul>
                                 </div>
 
-                                <!-- API Token Section -->
-                                <?php if ($config_atual && isset($config_atual['api_token'])): ?>
-                                <div class="alert alert-warning mt-3">
-                                    <h6><i class="bi bi-shield-lock"></i> Token de API (Autenticação)</h6>
-                                    <p class="mb-2">Use este token para autenticar requisições ao webhook:</p>
-                                    <div class="input-group mb-2">
-                                        <input type="password" class="form-control font-monospace" id="apiToken" 
-                                               value="<?= htmlspecialchars($config_atual['api_token']) ?>" 
-                                               readonly>
-                                        <button class="btn btn-outline-secondary" onclick="toggleApiToken()" id="toggleTokenBtn">
-                                            <i class="bi bi-eye"></i>
-                                        </button>
-                                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('apiToken')">
-                                            <i class="bi bi-clipboard"></i>
-                                        </button>
-                                    </div>
-                                    <small class="text-muted">
-                                        <i class="bi bi-info-circle"></i> 
-                                        Envie no header: <code>Authorization: Bearer SEU_TOKEN</code>
-                                        <br>
-                                        Rate Limit: <strong><?= $config_atual['api_rate_limit'] ?? 100 ?> requisições/hora</strong>
-                                        <?php if ($config_atual['api_ultimo_uso']): ?>
-                                        | Último uso: <strong><?= date('d/m/Y H:i', strtotime($config_atual['api_ultimo_uso'])) ?></strong>
-                                        <?php endif; ?>
-                                    </small>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="mt-3">
-                                    <a href="lead_form.php" class="btn btn-primary btn-sm" target="_blank">
-                                        <i class="bi bi-box-arrow-up-right"></i> Visualizar Formulário
-                                    </a>
-                                    <a href="api_lead_webhook.php" class="btn btn-outline-info btn-sm" target="_blank">
-                                        <i class="bi bi-code-square"></i> Documentação API
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 2. Gestão de Leads -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingGestao">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGestao" aria-expanded="false" aria-controls="collapseGestao">
-                                <i class="bi bi-people me-2"></i> 2. Gestão de Leads (CRM)
-                            </button>
-                        </h2>
-                        <div id="collapseGestao" class="accordion-collapse collapse" aria-labelledby="headingGestao" data-bs-parent="#accordionLeadsSystem">
-                            <div class="accordion-body">
-                                <p><strong>Painel administrativo para visualizar e gerenciar todos os leads capturados.</strong></p>
-
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <div class="card bg-light">
-                                            <div class="card-body">
-                                                <h6><i class="bi bi-bar-chart"></i> Dashboard de Leads</h6>
-                                                <p class="small mb-2">Estatísticas em tempo real:</p>
-                                                <ul class="small mb-0">
-                                                    <li>Total de leads</li>
-                                                    <li>Por status: Novo, Contatado, Qualificado, Convertido, Perdido</li>
-                                                    <li>Filtros: data, status, busca</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="card bg-light">
-                                            <div class="card-body">
-                                                <h6><i class="bi bi-lightning"></i> Ações Rápidas</h6>
-                                                <p class="small mb-2">Diretamente da lista:</p>
-                                                <ul class="small mb-0">
-                                                    <li><strong>Enviar Formulário KYC</strong> (1 clique)</li>
-                                                    <li>Contato via WhatsApp</li>
-                                                    <li>Enviar email</li>
-                                                    <li>Mudar status</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <div class="mt-3">
                                     <a href="leads.php" class="btn btn-success btn-sm">
                                         <i class="bi bi-funnel-fill"></i> Acessar Gestão de Leads
@@ -484,327 +636,89 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                         </div>
                     </div>
 
-                    <!-- 3. Conversão Lead → Cliente KYC -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingConversao">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseConversao" aria-expanded="false" aria-controls="collapseConversao">
-                                <i class="bi bi-arrow-left-right me-2"></i> 3. Conversão Automática: Lead → Cliente KYC
-                            </button>
-                        </h2>
-                        <div id="collapseConversao" class="accordion-collapse collapse" aria-labelledby="headingConversao" data-bs-parent="#accordionLeadsSystem">
-                            <div class="accordion-body">
-                                <p><strong>Sistema automático que transforma um lead em cliente KYC com um único clique.</strong></p>
+                    <!-- SEÇÕES INFORMATIVAS MOVIDAS -->
+                    <!-- Para documentação completa sobre Gestão de Leads, Conversão Automática, -->
+                    <!-- Integrações e outras informações, acesse: -->
+                    
+                </div>
+            </div>
+        </div>
 
-                                <div class="alert alert-success">
-                                    <h6><i class="bi bi-magic"></i> Processo Automático:</h6>
-                                    <ol class="mb-0">
-                                        <li>Verifica se email já existe como cliente</li>
-                                        <li>Cria novo cliente ou reutiliza existente</li>
-                                        <li>Gera <strong>token seguro de 64 caracteres</strong> (válido 30 dias)</li>
-                                        <li>Cria URL personalizada: <code>kyc_form.php?slug=<?= htmlspecialchars($config['slug'] ?? 'empresa') ?>&token=abc123...</code></li>
-                                        <li>Registra ação no histórico</li>
-                                        <li>Atualiza status automaticamente: <span class="badge bg-primary">Novo</span> → <span class="badge bg-info">Contatado</span></li>
-                                    </ol>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <h6><i class="bi bi-shield-check"></i> Segurança:</h6>
-                                        <ul class="small">
-                                            <li>Token: 64 chars hex (2^256 possibilidades)</li>
-                                            <li>Impossível de adivinhar por força bruta</li>
-                                            <li>Expira automaticamente em 30 dias</li>
-                                            <li>Acesso direto sem login/senha</li>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <h6><i class="bi bi-clipboard-check"></i> Cliente Preenche:</h6>
-                                        <ul class="small">
-                                            <li>Dados da empresa (CNPJ automático)</li>
-                                            <li>Upload de documentos</li>
-                                            <li>Sócios/representantes</li>
-                                            <li>Branding personalizado (seu logo/cores)</li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <div class="mt-3">
-                                    <a href="lead_detail.php" class="btn btn-outline-primary btn-sm disabled">
-                                        <i class="bi bi-file-earmark-check"></i> Ver exemplo de conversão
-                                    </a>
-                                    <a href="FLUXO_LEAD_TO_KYC.md" class="btn btn-outline-secondary btn-sm" target="_blank">
-                                        <i class="bi bi-book"></i> Documentação Completa
-                                    </a>
-                                </div>
+        <!-- Links Rápidos para Páginas do Sistema -->
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-link-45deg"></i> Acesso Rápido às Funcionalidades</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-people-fill fs-1 text-primary mb-3"></i>
+                                <h6>Gestão de Leads</h6>
+                                <p class="small text-muted mb-3">CRM completo com todos os leads capturados</p>
+                                <a href="leads.php" class="btn btn-primary btn-sm w-100">
+                                    <i class="bi bi-funnel-fill"></i> Acessar CRM
+                                </a>
                             </div>
                         </div>
                     </div>
-
-                    <!-- 4. Captura Universal de Formulários -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingUniversalCapture">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseUniversalCapture" aria-expanded="false" aria-controls="collapseUniversalCapture">
-                                <i class="bi bi-magic me-2"></i> 4. Captura Universal de Formulários
-                            </button>
-                        </h2>
-                        <div id="collapseUniversalCapture" class="accordion-collapse collapse" aria-labelledby="headingUniversalCapture" data-bs-parent="#accordionLeadsSystem">
-                            <div class="accordion-body">
-                                <div class="alert alert-success">
-                                    <i class="bi bi-stars"></i> <strong>Capture TODOS os formulários do seu site com apenas 1 linha de código!</strong>
-                                    <p class="mb-0 mt-2 small">O script universal detecta automaticamente qualquer formulário HTML e envia os leads para o sistema Verify.</p>
-                                </div>
-
-                                <h6><i class="bi bi-check-circle-fill text-success"></i> Funciona com:</h6>
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <ul class="small">
-                                            <li>✅ Contact Form 7 (WordPress)</li>
-                                            <li>✅ Elementor Pro Forms</li>
-                                            <li>✅ WPForms</li>
-                                            <li>✅ Gravity Forms</li>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <ul class="small">
-                                            <li>✅ HTML puro</li>
-                                            <li>✅ Formulários AJAX</li>
-                                            <li>✅ Popups e modals</li>
-                                            <li>✅ Qualquer formulário HTML!</li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <?php if (!empty($config_atual['api_token'])): 
-                                    // Gera a URL completa do script com o token já configurado
-                                    $script_url = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . 
-                                                  $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/') . 
-                                                  '/verify-universal-form-capture.js?token=' . urlencode($config_atual['api_token']);
-                                ?>
-                                
-                                <div class="alert alert-success mb-3">
-                                    <strong><i class="bi bi-stars"></i> Instalação Simplificada:</strong>
-                                    <p class="mb-2 small">Cole este código no seu site e pronto! O token já está configurado automaticamente.</p>
-                                </div>
-
-                                <div class="card mb-3 border-success">
-                                    <div class="card-header bg-success text-white">
-                                        <strong><i class="bi bi-code-slash"></i> Código Pronto para Usar</strong>
-                                    </div>
-                                    <div class="card-body">
-                                        <p class="small mb-2"><strong>WordPress:</strong> Adicione no <code>header.php</code> do tema ou use plugin "Insert Headers and Footers"</p>
-                                        <p class="small mb-2"><strong>HTML/PHP:</strong> Cole antes do <code>&lt;/body&gt;</code> em todas as páginas</p>
-                                        
-                                        <div class="input-group mb-2">
-                                            <input type="text" class="form-control font-monospace small" id="universalScriptTag" 
-                                                   value='<?= htmlspecialchars('<script src="' . $script_url . '"></script>') ?>' 
-                                                   readonly>
-                                            <button class="btn btn-success" onclick="copyToClipboard('universalScriptTag')">
-                                                <i class="bi bi-clipboard"></i> Copiar
-                                            </button>
-                                        </div>
-                                        
-                                        <div class="alert alert-info mb-0 small">
-                                            <i class="bi bi-info-circle"></i> <strong>Atenção:</strong> O script carrega diretamente do servidor Verify com seu token já configurado. Não precisa baixar nem editar nada!
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="alert alert-success">
-                                    <strong><i class="bi bi-graph-up"></i> Integração Automática com Analytics:</strong>
-                                    <p class="small mb-2">O script detecta automaticamente se o site do cliente já tem Google Analytics (GA4) ou Google Tag Manager instalado e envia os eventos para eles!</p>
-                                    <div class="row small">
-                                        <div class="col-md-6">
-                                            <strong>✅ Google Analytics (GA4):</strong>
-                                            <ul class="mb-0 mt-1">
-                                                <li>Evento: <code>generate_lead</code></li>
-                                                <li>Categoria: Lead</li>
-                                                <li>Detecção automática via <code>gtag()</code></li>
-                                            </ul>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>✅ Google Tag Manager:</strong>
-                                            <ul class="mb-0 mt-1">
-                                                <li>Evento: <code>lead_captured</code></li>
-                                                <li>Variáveis: lead_id, form_url</li>
-                                                <li>Detecção automática via <code>dataLayer</code></li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                    <div class="alert alert-light mt-2 mb-0 small">
-                                        <i class="bi bi-info-circle-fill"></i> <strong>Importante:</strong> O GTM/Analytics configurado <u>nesta seção</u> (<code><?= !empty($config_atual['google_tag_manager_id']) ? htmlspecialchars($config_atual['google_tag_manager_id']) : 'não configurado' ?></code>) é usado apenas nos <strong>formulários whitelabel</strong> (lead_form.php e kyc_form.php). O script universal usa o GTM/GA4 que já está no site do cliente.
-                                    </div>
-                                </div>
-
-                                <?php else: ?>
-                                <div class="alert alert-warning">
-                                    <i class="bi bi-exclamation-triangle"></i> <strong>Token não encontrado!</strong>
-                                    <p class="mb-0 small">Você precisa gerar um token API primeiro na seção <strong>"Sistema de Leads API"</strong> acima.</p>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="alert alert-info">
-                                    <strong><i class="bi bi-lightbulb"></i> Como funciona:</strong>
-                                    <ol class="mb-0 small mt-2">
-                                        <li>O script monitora <strong>todos</strong> os formulários da página</li>
-                                        <li>Detecta automaticamente os campos (nome, email, telefone, empresa)</li>
-                                        <li>Quando o usuário envia o formulário, captura os dados</li>
-                                        <li>Envia para o webhook Verify em segundo plano</li>
-                                        <li>Envia eventos para GA4/GTM se disponíveis no site</li>
-                                        <li>Não interfere no funcionamento normal do formulário</li>
-                                    </ol>
-                                </div>
-
-                                <?php if (!empty($config_atual['api_token'])): ?>
-                                <div class="d-grid gap-2 mt-3">
-                                    <a href="test_universal_capture.php" class="btn btn-lg btn-warning" target="_blank">
-                                        <i class="bi bi-bug-fill"></i> Testar Captura em Tempo Real
-                                    </a>
-                                    <small class="text-muted text-center">
-                                        <i class="bi bi-info-circle"></i> Abre página interativa para testar o script e ver logs em tempo real
-                                    </small>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <h6 class="small"><i class="bi bi-gear-fill"></i> Configuração Avançada:</h6>
-                                        <ul class="small">
-                                            <li>Ignorar formulários específicos</li>
-                                            <li>Personalizar detecção de campos</li>
-                                            <li>Integração com GA4/GTM</li>
-                                            <li>Eventos JavaScript customizados</li>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <h6 class="small"><i class="bi bi-book"></i> Documentação:</h6>
-                                        <a href="UNIVERSAL_FORM_CAPTURE.md" class="btn btn-outline-primary btn-sm" target="_blank">
-                                            <i class="bi bi-file-earmark-text"></i> Ver Documentação Completa
-                                        </a>
-                                    </div>
-                                </div>
-
-                                <div class="alert alert-warning mt-3 mb-0">
-                                    <small><i class="bi bi-exclamation-triangle"></i> <strong>Importante:</strong> Certifique-se de ter um token API ativo antes de usar o script universal.</small>
-                                </div>
+                    <div class="col-md-3">
+                        <div class="card h-100 border-success">
+                            <div class="card-body text-center">
+                                <i class="bi bi-check2-circle fs-1 text-success mb-3"></i>
+                                <h6>Validar Instalação</h6>
+                                <p class="small text-muted mb-3">Teste se o script está funcionando no seu site</p>
+                                <a href="test_universal_capture.php" class="btn btn-success btn-sm w-100" target="_blank">
+                                    <i class="bi bi-search"></i> Testar Agora
+                                </a>
                             </div>
                         </div>
                     </div>
-
-                    <!-- 5. Integrações -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingIntegracoes">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseIntegracoes" aria-expanded="false" aria-controls="collapseIntegracoes">
-                                <i class="bi bi-plug me-2"></i> 5. Integrações e Rastreamento
-                            </button>
-                        </h2>
-                        <div id="collapseIntegracoes" class="accordion-collapse collapse" aria-labelledby="headingIntegracoes" data-bs-parent="#accordionLeadsSystem">
-                            <div class="accordion-body">
-                                <h6><i class="bi bi-check-circle-fill text-success"></i> Integrações Ativas:</h6>
-                                <ul>
-                                    <li><strong>Google Analytics:</strong> Evento <code>generate_lead</code> enviado automaticamente</li>
-                                    <li><strong>Google Tag Manager:</strong> 
-                                        <?php if (!empty($config['google_tag_manager_id'])): ?>
-                                            <span class="badge bg-success">Configurado: <?= htmlspecialchars($config['google_tag_manager_id']) ?></span>
-                                        <?php else: ?>
-                                            <span class="badge bg-warning">Não configurado</span>
-                                            <small class="text-muted">(Configure acima no formulário)</small>
-                                        <?php endif; ?>
-                                    </li>
-                                    <li><strong>Histórico Completo:</strong> Todas ações registradas em <code>leads_historico</code></li>
-                                    <li><strong>Log de Webhooks:</strong> Auditoria completa em <code>leads_webhook_log</code></li>
-                                </ul>
-
-                                <h6 class="mt-4"><i class="bi bi-clock-history text-primary"></i> Integrações Futuras:</h6>
-                                <ul class="text-muted">
-                                    <li>📧 Email automático com PHPMailer</li>
-                                    <li>🔗 Webhook para CRM externo (HubSpot, Salesforce, RD Station)</li>
-                                    <li>📊 Dashboard de conversão detalhado</li>
-                                    <li>🔔 Notificações em tempo real</li>
-                                </ul>
-
-                                <div class="alert alert-info mt-3">
-                                    <strong>Parâmetros UTM Rastreados:</strong>
-                                    <ul class="mb-0 small">
-                                        <li><code>utm_source</code> - Fonte do tráfego (ex: google, facebook)</li>
-                                        <li><code>utm_medium</code> - Meio (ex: cpc, email, social)</li>
-                                        <li><code>utm_campaign</code> - Campanha específica</li>
-                                    </ul>
-                                </div>
+                    <div class="col-md-3">
+                        <div class="card h-100 border-warning">
+                            <div class="card-body text-center">
+                                <i class="bi bi-clipboard-check fs-1 text-warning mb-3"></i>
+                                <h6>Análise KYC</h6>
+                                <p class="small text-muted mb-3">Avaliar formulários KYC preenchidos</p>
+                                <a href="kyc_list.php" class="btn btn-warning btn-sm w-100">
+                                    <i class="bi bi-list-check"></i> Ver KYCs
+                                </a>
                             </div>
                         </div>
                     </div>
-
-                    <!-- 6. Documentação -->
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="headingDocs">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDocs" aria-expanded="false" aria-controls="collapseDocs">
-                                <i class="bi bi-book me-2"></i> 6. Documentação e Suporte
-                            </button>
-                        </h2>
-                        <div id="collapseDocs" class="accordion-collapse collapse" aria-labelledby="headingDocs" data-bs-parent="#accordionLeadsSystem">
-                            <div class="accordion-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-diagram-3 fs-1 text-primary"></i>
-                                                <h6 class="mt-2">Fluxo Completo</h6>
-                                                <p class="small text-muted">Lead → Cliente KYC</p>
-                                                <a href="FLUXO_LEAD_TO_KYC.md" class="btn btn-outline-primary btn-sm" target="_blank">
-                                                    <i class="bi bi-box-arrow-up-right"></i> Abrir
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-shield-lock fs-1 text-success"></i>
-                                                <h6 class="mt-2">Segurança</h6>
-                                                <p class="small text-muted">Tokens e Proteções</p>
-                                                <a href="SEGURANCA_TOKENS.md" class="btn btn-outline-success btn-sm" target="_blank">
-                                                    <i class="bi bi-box-arrow-up-right"></i> Abrir
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-database-gear fs-1 text-warning"></i>
-                                                <h6 class="mt-2">Instalação SQL</h6>
-                                                <p class="small text-muted">Script do Banco</p>
-                                                <a href="INSTALL_LEADS_SYSTEM.sql" class="btn btn-outline-warning btn-sm" target="_blank" download>
-                                                    <i class="bi bi-download"></i> Download
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="alert alert-light mt-4">
-                                    <h6><i class="bi bi-lightbulb"></i> Links Rápidos:</h6>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <ul class="small">
-                                                <li><a href="leads.php">📊 Painel de Leads</a></li>
-                                                <li><a href="lead_form.php" target="_blank">📝 Formulário Público</a></li>
-                                                <li><a href="kyc_form.php" target="_blank">📋 Formulário KYC</a></li>
-                                            </ul>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <ul class="small">
-                                                <li><a href="kyc_list.php">🔍 Análise KYC</a></li>
-                                                <li><a href="dashboard_analytics.php">📈 Dashboard Analytics</a></li>
-                                                <li><a href="consulta_cnpj.php">🏢 Consulta CNPJ</a></li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
+                    <div class="col-md-3">
+                        <div class="card h-100 border-secondary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-book-half fs-1 text-secondary mb-3"></i>
+                                <h6>Documentação</h6>
+                                <p class="small text-muted mb-3">Guias, fluxos e informações detalhadas</p>
+                                <a href="sistema_leads_info.php" class="btn btn-secondary btn-sm w-100" target="_blank">
+                                    <i class="bi bi-book"></i> Ver Docs
+                                </a>
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <div class="alert alert-light mt-4 mb-0">
+                    <h6 class="mb-3"><i class="bi bi-link-45deg"></i> Outros Links Úteis:</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="small mb-0">
+                                <li><a href="lead_form.php" target="_blank"><i class="bi bi-file-earmark-text"></i> Formulário Público de Leads</a></li>
+                                <li><a href="kyc_form.php" target="_blank"><i class="bi bi-clipboard2-check"></i> Formulário KYC Whitelabel</a></li>
+                                <li><a href="dashboard_analytics.php"><i class="bi bi-graph-up"></i> Dashboard Analytics</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="small mb-0">
+                                <li><a href="api_lead_webhook.php" target="_blank"><i class="bi bi-code-square"></i> Documentação API Webhook</a></li>
+                                <li><a href="consulta_cnpj.php"><i class="bi bi-building"></i> Consulta CNPJ</a></li>
+                                <li><a href="FLUXO_LEAD_TO_KYC.md" target="_blank"><i class="bi bi-diagram-3"></i> Fluxo Lead → KYC (MD)</a></li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -821,6 +735,25 @@ if ($is_superadmin && !$empresa_id_para_editar) {
         const originalHTML = btn.innerHTML;
         btn.innerHTML = '<i class="bi bi-check"></i>';
         setTimeout(() => { btn.innerHTML = originalHTML; }, 1500);
+    }
+    
+    // Função para copiar código do script (aceita string direta)
+    function copyScriptCode(code) {
+        navigator.clipboard.writeText(code).then(() => {
+            const btn = event.target.closest('button');
+            const originalHTML = btn.innerHTML;
+            const originalClass = btn.className;
+            btn.innerHTML = '<i class="bi bi-check"></i> Copiado!';
+            btn.classList.remove('btn-success', 'btn-primary', 'btn-warning');
+            btn.classList.add('btn-success');
+            setTimeout(() => { 
+                btn.innerHTML = originalHTML;
+                btn.className = originalClass;
+            }, 2000);
+        }).catch(err => {
+            alert('Erro ao copiar. Por favor, copie manualmente.');
+            console.error(err);
+        });
     }
     
     function toggleApiTokenVisibility() {

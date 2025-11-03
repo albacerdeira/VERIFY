@@ -31,6 +31,7 @@ if (session_status() === PHP_SESSION_NONE) {
 function enviarEmailVerificacao($email_cliente, $nome_cliente, $verify_url, $nome_empresa, $cor_variavel, $logo_url): void {
     $mail = new PHPMailer(true);
     
+    // Usa configurações do config.php
     $mail->isSMTP();
     $mail->Host       = SMTP_HOST;
     $mail->SMTPAuth   = true;
@@ -74,6 +75,7 @@ function enviarEmailVerificacao($email_cliente, $nome_cliente, $verify_url, $nom
 $error = '';
 $success = '';
 $slug_contexto = $_GET['cliente'] ?? null;
+$lead_id_contexto = $_GET['lead_id'] ?? null; // Captura lead_id da URL para associação
 
 // --- CORREÇÃO: Variável agora é id_empresa_master ---
 $id_empresa_master_contexto = null; // ID da empresa dona do whitelabel
@@ -171,12 +173,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash_senha = password_hash($senha, PASSWORD_DEFAULT);
 
         // --- CORREÇÃO: Alterado de 'whitelabel_parceiro_id' para 'id_empresa_master' ---
-        $stmt_insert = $pdo->prepare(
-            "INSERT INTO kyc_clientes (nome_completo, cpf, email, password, selfie_path, codigo_verificacao, codigo_expira_em, email_verificado, status, id_empresa_master) " .
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pendente', ?)"
-        );
-        // --- CORREÇÃO: Passando a variável correta ---
-        $stmt_insert->execute([$nome, $cpf, $email, $hash_senha, $selfie_path, $codigo_verificacao, $codigo_expira_em, $id_empresa_master_contexto]);
+        // IMPORTANTE: Inclui lead_id para fazer a associação Lead → Cliente (se a coluna existir)
+        
+        // Tenta inserir com lead_id primeiro, se falhar tenta sem
+        $insert_success = false;
+        $last_insert_id = null;
+        
+        try {
+            // Tentativa 1: Com lead_id e origem (tabela atualizada)
+            $stmt_insert = $pdo->prepare(
+                "INSERT INTO kyc_clientes (nome_completo, cpf, email, password, selfie_path, codigo_verificacao, codigo_expira_em, email_verificado, status, id_empresa_master, lead_id, origem) " .
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pendente', ?, ?, 'lead_conversion')"
+            );
+            $stmt_insert->execute([
+                $nome, 
+                $cpf, 
+                $email, 
+                $hash_senha, 
+                $selfie_path, 
+                $codigo_verificacao, 
+                $codigo_expira_em, 
+                $id_empresa_master_contexto,
+                $lead_id_contexto, // NULL se não veio de lead, INT se veio
+            ]);
+            $last_insert_id = $pdo->lastInsertId();
+            $insert_success = true;
+        } catch (PDOException $e1) {
+            // Tentativa 2: Sem lead_id e origem (tabela não atualizada ainda)
+            error_log("INFO: Tentando INSERT sem lead_id (coluna pode não existir): " . $e1->getMessage());
+            try {
+                $stmt_insert = $pdo->prepare(
+                    "INSERT INTO kyc_clientes (nome_completo, cpf, email, password, selfie_path, codigo_verificacao, codigo_expira_em, email_verificado, status, id_empresa_master) " .
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pendente', ?)"
+                );
+                $stmt_insert->execute([
+                    $nome, 
+                    $cpf, 
+                    $email, 
+                    $hash_senha, 
+                    $selfie_path, 
+                    $codigo_verificacao, 
+                    $codigo_expira_em, 
+                    $id_empresa_master_contexto
+                ]);
+                $last_insert_id = $pdo->lastInsertId();
+                $insert_success = true;
+                error_log("INFO: Cliente inserido sem lead_id. Execute add_lead_id_to_kyc_clientes.sql para ativar integração Lead→Cliente");
+            } catch (PDOException $e2) {
+                throw $e2; // Falha total - propaga exceção
+            }
+        }
+        
+        if (!$insert_success || !$last_insert_id) {
+            throw new Exception('Erro ao criar registro do cliente.');
+        }
         
         // Construção da URL de verificação com contexto whitelabel
         $verify_url = SITE_URL . "/cliente_verificacao.php?codigo=" . urlencode($codigo_verificacao);
@@ -184,11 +234,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $verify_url .= "&cliente=" . urlencode($slug_contexto);
         }
 
-        // Envio do e-mail de verificação
-        enviarEmailVerificacao($email, $nome, $verify_url, $nome_empresa, $cor_variavel, $logo_url);
-
+        // Commit da transação ANTES de tentar enviar email
         $pdo->commit();
-        $success = "Cadastro realizado com sucesso! Um e-mail de verificação foi enviado para " . htmlspecialchars($email) . ".";
+
+        // Atualiza status do lead se veio de conversão
+        if ($lead_id_contexto) {
+            try {
+                $stmt_lead = $pdo->prepare("UPDATE leads SET status = 'qualificado' WHERE id = ?");
+                $stmt_lead->execute([$lead_id_contexto]);
+                
+                // Registra no histórico do lead
+                $stmt_hist = $pdo->prepare(
+                    "INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at) " .
+                    "VALUES (?, NULL, 'registro_completado', 'Lead completou o registro e se tornou cliente', NOW())"
+                );
+                $stmt_hist->execute([$lead_id_contexto]);
+            } catch (PDOException $e) {
+                error_log("Erro ao atualizar status do lead {$lead_id_contexto}: " . $e->getMessage());
+                // Não quebra o fluxo - registro do cliente foi bem-sucedido
+            }
+        }
+
+        // Envio do e-mail de verificação (não crítico - se falhar, não cancela o cadastro)
+        try {
+            enviarEmailVerificacao($email, $nome, $verify_url, $nome_empresa, $cor_variavel, $logo_url);
+            $success = "Cadastro realizado com sucesso! Um e-mail de verificação foi enviado para " . htmlspecialchars($email) . ".";
+        } catch (Exception $email_error) {
+            error_log("Erro ao enviar email de verificação: " . $email_error->getMessage());
+            $success = "Cadastro realizado com sucesso! Porém, não foi possível enviar o e-mail de verificação. " .
+                       "Entre em contato com o suporte para ativar sua conta.";
+        }
 
     } catch (Exception $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }

@@ -20,9 +20,35 @@ $cliente_email = $_SESSION['cliente_email'] ?? ''; // Garante que a variável ex
 // --- LÓGICA CORRIGIDA PARA BUSCAR STATUS DO KYC USANDO cliente_id ---
 $kyc_status = null;
 $error = null;
+$lead_origem = null; // Dados do lead de origem, se houver
 
 if (isset($pdo)) {
     try {
+        // Busca informações do cliente incluindo lead de origem (se a coluna existir)
+        // Tenta primeiro com lead_id, se falhar usa query sem JOIN
+        try {
+            $stmt_cliente = $pdo->prepare(
+                'SELECT kc.*, l.nome as lead_nome, l.data_criacao as lead_data_criacao ' .
+                'FROM kyc_clientes kc ' .
+                'LEFT JOIN leads l ON kc.lead_id = l.id ' .
+                'WHERE kc.id = ?'
+            );
+            $stmt_cliente->execute([$cliente_id]);
+            $cliente_info = $stmt_cliente->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cliente_info && isset($cliente_info['lead_id']) && $cliente_info['lead_id']) {
+                $lead_origem = [
+                    'id' => $cliente_info['lead_id'],
+                    'nome' => $cliente_info['lead_nome'],
+                    'data_criacao' => $cliente_info['lead_data_criacao'],
+                    'origem' => $cliente_info['origem'] ?? 'lead_conversion'
+                ];
+            }
+        } catch (PDOException $e_lead) {
+            // Coluna lead_id não existe ainda - ignora erro e continua
+            error_log("INFO: Coluna lead_id não existe em kyc_clientes. Execute add_lead_id_to_kyc_clientes.sql");
+        }
+        
         // Busca o status da última submissão do cliente usando o ID do cliente.
         $stmt_status = $pdo->prepare(
             'SELECT status FROM kyc_empresas WHERE cliente_id = ? ORDER BY data_atualizacao DESC LIMIT 1'
@@ -144,6 +170,7 @@ $logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
     <title><?= $page_title ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         :root {
             --primary-color: <?= htmlspecialchars($cor_variavel) ?>;
@@ -206,10 +233,20 @@ $logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
                 <?php else: ?>
+                    
+                    <?php if ($lead_origem): ?>
+                    <!-- Informação de Origem Lead -->
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle-fill"></i> 
+                        <strong>Bem-vindo!</strong> Seu cadastro foi iniciado a partir de um lead registrado em 
+                        <?= date('d/m/Y', strtotime($lead_origem['data_criacao'])) ?>.
+                        <small class="d-block mt-1 text-muted">ID do Lead: #<?= $lead_origem['id'] ?> | Origem: <?= htmlspecialchars($lead_origem['origem']) ?></small>
+                    </div>
+                    <?php endif; ?>
+                    
                     <div class="card shadow-sm">
                         <div class="card-header text-center"><h4 class="mb-0">Status do seu Cadastro KYC</h4></div>
-                        <div class="card-body text-center p-4">
-                            <?php if (!$kyc_status): ?>
+                        <div class="card-body text-center p-4"><?php if (!$kyc_status): ?>
                                 <p class="card-title">Nenhum cadastro iniciado</p>
                                 <p class="text-muted">Você ainda não iniciou seu processo de cadastro. Clique no botão abaixo para começar.</p>
                                 <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-sm mt-3">Iniciar Cadastro KYC</a>

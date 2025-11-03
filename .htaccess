@@ -1,0 +1,80 @@
+# ================================================
+# VERIFY KYC - Configuração Apache (.htaccess)
+# ================================================
+
+# Ativar RewriteEngine
+RewriteEngine On
+RewriteBase /
+
+# ================================================
+# 1. REMOVER .php DAS URLs
+# ================================================
+# Se o arquivo .php existe, permite acesso sem a extensão
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.+)$ $1.php [L,QSA]
+
+# ================================================
+# 2. REDIRECIONAR .php PARA SEM EXTENSÃO (301)
+# ================================================
+# Se alguém acessar com .php, redireciona para sem .php
+RewriteCond %{THE_REQUEST} ^GET\ /[^?\s]+\.php
+RewriteRule ^(.+)\.php$ /$1 [R=301,L]
+
+# ================================================
+# 3. SEGURANÇA - Bloquear acesso a arquivos sensíveis
+# ================================================
+# Bloquear acesso direto a arquivos de configuração
+<FilesMatch "^(config\.php|env\.php|bootstrap\.php|whitelabel_logic\.php)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso a arquivos .sql
+<FilesMatch "\.sql$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso a arquivos .md (markdown/documentação)
+<FilesMatch "\.md$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# ================================================
+# 4. PERFORMANCE - Cache e Compressão
+# ================================================
+# Cache de arquivos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType application/x-javascript "access plus 1 month"
+</IfModule>
+
+# Compressão GZIP
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# ================================================
+# 5. HTTPS - Forçar conexão segura (descomente se tiver SSL)
+# ================================================
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ================================================
+# 6. CHARSET - Garantir UTF-8
+# ================================================
+AddDefaultCharset UTF-8

@@ -51,7 +51,7 @@ try {
     // DEBUG: Log para verificar o que está sendo gerado
     error_log("DASHBOARD DEBUG - Role: $user_role | Empresa ID: $user_empresa_id | WHERE: $where_empresa");
 
-    // 1. CLIENTES CADASTRADOS (kyc_clientes) - Filtrados por empresa
+    // ===== 1. CLIENTES CADASTRADOS (kyc_clientes) - Filtrados por empresa =====
     if ($user_role === 'superadmin') {
         $sql_total_clientes = "SELECT COUNT(*) as total FROM kyc_clientes";
         $stmt_total_clientes = $pdo->query($sql_total_clientes);
@@ -62,20 +62,7 @@ try {
     }
     $total_clientes = $stmt_total_clientes->fetch(PDO::FETCH_ASSOC)['total'];
 
-    // Clientes com KYC Aprovado
-    $sql_clientes_aprovados = "SELECT COUNT(DISTINCT ke.cliente_id) as total
-                               FROM kyc_empresas ke
-                               $where_empresa";
-    if ($where_empresa) {
-        $sql_clientes_aprovados .= " AND ke.status = 'Aprovado'";
-    } else {
-        $sql_clientes_aprovados .= " WHERE ke.status = 'Aprovado'";
-    }
-    $stmt_clientes_aprovados = $pdo->prepare($sql_clientes_aprovados);
-    $stmt_clientes_aprovados->execute($params_empresa);
-    $total_clientes_aprovados = $stmt_clientes_aprovados->fetch(PDO::FETCH_ASSOC)['total'];
-
-    // 2. KYC STATUS (kyc_empresas)
+    // ===== 2. KYC STATUS (kyc_empresas) =====
     $sql_kyc_status = "SELECT status, COUNT(*) as total
                        FROM kyc_empresas ke
                        $where_empresa
@@ -88,6 +75,54 @@ try {
         $kyc_por_status[$row['status']] = $row['total'];
         $total_kyc += $row['total'];
     }
+
+    // Clientes com KYC Aprovado
+    $total_clientes_aprovados = $kyc_por_status['Aprovado'] ?? 0;
+
+    // ===== 3. MÉTRICAS DO FUNIL DE CONVERSÃO =====
+    
+    // 3.1 LEADS POR STATUS - Filtrados por empresa
+    $leads_stats = ['novo' => 0, 'contatado' => 0, 'qualificado' => 0, 'convertido' => 0, 'perdido' => 0];
+    $total_leads = 0;
+    
+    if ($user_role === 'superadmin') {
+        $sql_leads = "SELECT status, COUNT(*) as total FROM leads GROUP BY status";
+        $stmt_leads = $pdo->query($sql_leads);
+    } else {
+        $sql_leads = "SELECT status, COUNT(*) as total FROM leads WHERE id_empresa_master = :empresa_id GROUP BY status";
+        $stmt_leads = $pdo->prepare($sql_leads);
+        $stmt_leads->execute([':empresa_id' => $user_empresa_id]);
+    }
+    
+    while ($row = $stmt_leads->fetch(PDO::FETCH_ASSOC)) {
+        $leads_stats[$row['status']] = $row['total'];
+        $total_leads += $row['total'];
+    }
+    
+    // 3.2 CLIENTES EM REGISTRO (kyc_clientes cadastrados, independente de ter KYC ou não)
+    // "Criando Cadastro" = Total de clientes registrados (não conta KYC "Em Preenchimento")
+    if ($user_role === 'superadmin') {
+        $sql_em_registro = "SELECT COUNT(*) as total FROM kyc_clientes";
+        $stmt_em_registro = $pdo->query($sql_em_registro);
+    } else {
+        $sql_em_registro = "SELECT COUNT(*) as total FROM kyc_clientes WHERE id_empresa_master = :empresa_id";
+        $stmt_em_registro = $pdo->prepare($sql_em_registro);
+        $stmt_em_registro->execute([':empresa_id' => $user_empresa_id]);
+    }
+    $total_em_registro = $stmt_em_registro->fetch(PDO::FETCH_ASSOC)['total'];
+    
+    // 3.3 KYC EM ANÁLISE (apenas "Em Análise" + "Pendenciado")
+    // NÃO conta "Em Preenchimento" nem "Novo Registro"
+    $total_em_analise = ($kyc_por_status['Em Análise'] ?? 0) + ($kyc_por_status['Pendenciado'] ?? 0);
+    
+    // DEBUG: Log detalhado do funil
+    error_log("FUNIL DEBUG - Total Leads: {$total_leads} | Em Registro: {$total_em_registro} | Em Análise: {$total_em_analise} | Aprovados: {$total_clientes_aprovados}");
+    error_log("KYC STATUS DEBUG - " . json_encode($kyc_por_status));
+    
+    // 3.4 TAXA DE CONVERSÃO (Leads → Clientes Aprovados)
+    $taxa_conversao = $total_leads > 0 ? round(($total_clientes_aprovados / $total_leads) * 100, 1) : 0;
+
+    // ===== FIM MÉTRICAS DO FUNIL =====
 
     // 3. ALERTAS CEIS (usando flags da tabela kyc_avaliacoes) - FILTRADO POR EMPRESA
     // av_check_ceis_ok: 1=OK, 0=Sanção encontrada, NULL=Não verificado
@@ -281,6 +316,56 @@ try {
 }
 ?>
 
+<style>
+/* Estilos do Funil de Conversão */
+.funnel-step {
+    transition: all 0.3s ease;
+}
+
+.funnel-step:hover {
+    transform: translateY(-5px);
+}
+
+.funnel-arrow {
+    display: none;
+}
+
+@media (min-width: 768px) {
+    .funnel-arrow {
+        display: block;
+        position: absolute;
+        right: -20px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+    
+    .col-md {
+        position: relative;
+    }
+    
+    .col-md:last-child .funnel-arrow {
+        display: none;
+    }
+}
+
+.funnel-icon {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+</style>
+
 <div class="container-fluid">
     <?php if ($erro_carregamento): ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -429,6 +514,169 @@ try {
                     </div>
                     <small class="text-muted"><?= number_format($percent_pep, 1) ?>% dos clientes</small>
                     <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Funil de Conversão: Lead → Cliente Aprovado -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="mb-0"><i class="bi bi-funnel-fill"></i> Funil de Conversão: Lead → Cliente Aprovado</h5>
+                    <small>Jornada completa do lead até se tornar cliente ativo</small>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row text-center">
+                        <!-- Etapa 1: Leads Novos -->
+                        <div class="col-md">
+                            <div class="funnel-step position-relative">
+                                <div class="funnel-icon mb-3" style="font-size: 3rem; color: #6c757d;">
+                                    <i class="bi bi-person-plus-fill"></i>
+                                </div>
+                                <h4 class="fw-bold"><?= number_format($leads_stats['novo'], 0, ',', '.') ?></h4>
+                                <p class="text-muted mb-2">Leads Novos</p>
+                                <span class="badge bg-secondary">Etapa 1</span>
+                                <?php if ($total_leads > 0): ?>
+                                <div class="progress mt-3" style="height: 8px;">
+                                    <div class="progress-bar bg-secondary" style="width: 100%"></div>
+                                </div>
+                                <small class="text-muted">100% do topo</small>
+                                <?php endif; ?>
+                            </div>
+                            <div class="funnel-arrow text-muted mt-3 mb-3">
+                                <i class="bi bi-arrow-right" style="font-size: 2rem;"></i>
+                            </div>
+                        </div>
+
+                        <!-- Etapa 2: Leads Contatados -->
+                        <div class="col-md">
+                            <div class="funnel-step">
+                                <div class="funnel-icon mb-3" style="font-size: 3rem; color: #0dcaf0;">
+                                    <i class="bi bi-envelope-check-fill"></i>
+                                </div>
+                                <h4 class="fw-bold"><?= number_format($leads_stats['contatado'], 0, ',', '.') ?></h4>
+                                <p class="text-muted mb-2">Contatados</p>
+                                <span class="badge bg-info">Etapa 2</span>
+                                <?php if ($total_leads > 0): 
+                                    $percent_contatado = ($leads_stats['contatado'] / $total_leads) * 100;
+                                ?>
+                                <div class="progress mt-3" style="height: 8px;">
+                                    <div class="progress-bar bg-info" style="width: <?= $percent_contatado ?>%"></div>
+                                </div>
+                                <small class="text-muted"><?= number_format($percent_contatado, 1) ?>% do topo</small>
+                                <?php endif; ?>
+                            </div>
+                            <div class="funnel-arrow text-muted mt-3 mb-3">
+                                <i class="bi bi-arrow-right" style="font-size: 2rem;"></i>
+                            </div>
+                        </div>
+
+                        <!-- Etapa 3: Em Registro -->
+                        <div class="col-md">
+                            <div class="funnel-step">
+                                <div class="funnel-icon mb-3" style="font-size: 3rem; color: #fd7e14;">
+                                    <i class="bi bi-pencil-square"></i>
+                                </div>
+                                <h4 class="fw-bold"><?= number_format($total_em_registro, 0, ',', '.') ?></h4>
+                                <p class="text-muted mb-2">Criando Cadastro</p>
+                                <span class="badge bg-warning text-dark">Etapa 3</span>
+                                <?php if ($total_leads > 0): 
+                                    $percent_registro = ($total_em_registro / $total_leads) * 100;
+                                ?>
+                                <div class="progress mt-3" style="height: 8px;">
+                                    <div class="progress-bar bg-warning" style="width: <?= $percent_registro ?>%"></div>
+                                </div>
+                                <small class="text-muted"><?= number_format($percent_registro, 1) ?>% do topo</small>
+                                <?php endif; ?>
+                            </div>
+                            <div class="funnel-arrow text-muted mt-3 mb-3">
+                                <i class="bi bi-arrow-right" style="font-size: 2rem;"></i>
+                            </div>
+                        </div>
+
+                        <!-- Etapa 4: KYC em Análise -->
+                        <div class="col-md">
+                            <div class="funnel-step">
+                                <div class="funnel-icon mb-3" style="font-size: 3rem; color: #0d6efd;">
+                                    <i class="bi bi-search"></i>
+                                </div>
+                                <h4 class="fw-bold"><?= number_format($total_em_analise, 0, ',', '.') ?></h4>
+                                <p class="text-muted mb-2">KYC em Análise</p>
+                                <span class="badge bg-primary">Etapa 4</span>
+                                <?php if ($total_leads > 0): 
+                                    $percent_analise = ($total_em_analise / $total_leads) * 100;
+                                ?>
+                                <div class="progress mt-3" style="height: 8px;">
+                                    <div class="progress-bar bg-primary" style="width: <?= $percent_analise ?>%"></div>
+                                </div>
+                                <small class="text-muted"><?= number_format($percent_analise, 1) ?>% do topo</small>
+                                <?php endif; ?>
+                            </div>
+                            <div class="funnel-arrow text-muted mt-3 mb-3">
+                                <i class="bi bi-arrow-right" style="font-size: 2rem;"></i>
+                            </div>
+                        </div>
+
+                        <!-- Etapa 5: Clientes Aprovados -->
+                        <div class="col-md">
+                            <div class="funnel-step">
+                                <div class="funnel-icon mb-3" style="font-size: 3rem; color: #198754;">
+                                    <i class="bi bi-check-circle-fill"></i>
+                                </div>
+                                <h4 class="fw-bold text-success"><?= number_format($total_clientes_aprovados, 0, ',', '.') ?></h4>
+                                <p class="text-muted mb-2">Clientes Aprovados</p>
+                                <span class="badge bg-success">✓ Completo</span>
+                                <?php if ($total_leads > 0): ?>
+                                <div class="progress mt-3" style="height: 8px;">
+                                    <div class="progress-bar bg-success" style="width: <?= $taxa_conversao ?>%"></div>
+                                </div>
+                                <small class="text-success fw-bold">Taxa de conversão: <?= $taxa_conversao ?>%</small>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resumo Inferior -->
+                    <div class="row mt-4 pt-4 border-top">
+                        <div class="col-md-3 text-center">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-2">Total de Leads</h6>
+                                <h3 class="mb-0"><?= number_format($total_leads, 0, ',', '.') ?></h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-2">Leads Perdidos</h6>
+                                <h3 class="mb-0 text-danger"><?= number_format($leads_stats['perdido'], 0, ',', '.') ?></h3>
+                                <?php if ($total_leads > 0): 
+                                    $percent_perdido = ($leads_stats['perdido'] / $total_leads) * 100;
+                                ?>
+                                <small class="text-muted"><?= number_format($percent_perdido, 1) ?>%</small>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-2">Em Processo</h6>
+                                <?php $em_processo = $leads_stats['contatado'] + $leads_stats['qualificado'] + $total_em_registro + $total_em_analise; ?>
+                                <h3 class="mb-0 text-primary"><?= number_format($em_processo, 0, ',', '.') ?></h3>
+                                <?php if ($total_leads > 0): 
+                                    $percent_processo = ($em_processo / $total_leads) * 100;
+                                ?>
+                                <small class="text-muted"><?= number_format($percent_processo, 1) ?>%</small>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="p-3 bg-success bg-opacity-10 rounded border border-success">
+                                <h6 class="text-success mb-2"><i class="bi bi-trophy-fill"></i> Taxa de Sucesso</h6>
+                                <h3 class="mb-0 text-success"><?= $taxa_conversao ?>%</h3>
+                                <small class="text-muted">Lead → Cliente</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

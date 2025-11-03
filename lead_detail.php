@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Analistas não têm acesso
-if ($_SESSION['user_role'] === 'analista') {
+if ($user_role === 'analista') {
     header('Location: dashboard.php');
     exit;
 }
@@ -26,11 +26,9 @@ try {
     // Busca dados do lead
     $stmt = $pdo->prepare("
         SELECT l.*, 
-               e.nome AS empresa_parceira_nome,
-               u.nome AS responsavel_nome
+               e.nome AS empresa_parceira_nome
         FROM leads l
         LEFT JOIN empresas e ON l.id_empresa_master = e.id
-        LEFT JOIN usuarios u ON l.id_usuario_responsavel = u.id
         WHERE l.id = ?
     ");
     $stmt->execute([$lead_id]);
@@ -42,20 +40,61 @@ try {
     }
     
     // Verifica permissão (admin só pode ver leads da sua empresa)
-    if ($_SESSION['user_role'] === 'administrador' && $lead['id_empresa_master'] != $_SESSION['user_empresa_id']) {
+    if ($user_role === 'administrador' && $lead['id_empresa_master'] != $user_empresa_id) {
         header('Location: leads.php');
         exit;
     }
     
-    // Busca histórico
+    // Busca histórico do lead + eventos do processo KYC do cliente
     $stmt = $pdo->prepare("
-        SELECT h.*, u.nome AS usuario_nome
+        SELECT 
+            h.created_at,
+            h.acao COLLATE utf8mb4_general_ci as acao,
+            h.descricao COLLATE utf8mb4_general_ci as descricao,
+            COALESCE(u.nome, 'Sistema') COLLATE utf8mb4_general_ci AS usuario_nome,
+            'lead' COLLATE utf8mb4_general_ci as tipo_evento
         FROM leads_historico h
         LEFT JOIN usuarios u ON h.usuario_id = u.id
         WHERE h.lead_id = ?
-        ORDER BY h.created_at DESC
+        
+        UNION ALL
+        
+        SELECT 
+            kc.created_at,
+            'cliente_registrado' COLLATE utf8mb4_general_ci as acao,
+            CONCAT('Cliente se registrou: ', kc.nome_completo) COLLATE utf8mb4_general_ci as descricao,
+            'Sistema' COLLATE utf8mb4_general_ci as usuario_nome,
+            'cliente' COLLATE utf8mb4_general_ci as tipo_evento
+        FROM kyc_clientes kc
+        WHERE kc.lead_id = ?
+        
+        UNION ALL
+        
+        SELECT 
+            ke.data_criacao as created_at,
+            'kyc_iniciado' COLLATE utf8mb4_general_ci as acao,
+            CONCAT('KYC iniciado: ', ke.razao_social, ' (', ke.cnpj, ')') COLLATE utf8mb4_general_ci as descricao,
+            'Cliente' COLLATE utf8mb4_general_ci as usuario_nome,
+            'kyc' COLLATE utf8mb4_general_ci as tipo_evento
+        FROM kyc_empresas ke
+        INNER JOIN kyc_clientes kc ON ke.cliente_id = kc.id
+        WHERE kc.lead_id = ?
+        
+        UNION ALL
+        
+        SELECT 
+            ke.data_atualizacao as created_at,
+            CONCAT('kyc_status_', ke.status) COLLATE utf8mb4_general_ci as acao,
+            CONCAT('Status do KYC alterado para: ', ke.status) COLLATE utf8mb4_general_ci as descricao,
+            'Sistema' COLLATE utf8mb4_general_ci as usuario_nome,
+            'kyc_status' COLLATE utf8mb4_general_ci as tipo_evento
+        FROM kyc_empresas ke
+        INNER JOIN kyc_clientes kc ON ke.cliente_id = kc.id
+        WHERE kc.lead_id = ?
+        
+        ORDER BY created_at DESC
     ");
-    $stmt->execute([$lead_id]);
+    $stmt->execute([$lead_id, $lead_id, $lead_id, $lead_id]);
     $historico = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
 } catch (PDOException $e) {
@@ -156,13 +195,9 @@ $badge_class = match($lead['status']) {
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-12 mb-3">
                             <label class="text-muted small">Origem</label>
                             <p class="mb-0"><?= htmlspecialchars($lead['origem'] ?: '-') ?></p>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="text-muted small">Referer</label>
-                            <p class="mb-0"><small><?= htmlspecialchars($lead['referer'] ?: '-') ?></small></p>
                         </div>
                         <?php if ($lead['utm_source'] || $lead['utm_medium'] || $lead['utm_campaign']): ?>
                         <div class="col-md-12">
@@ -204,19 +239,56 @@ $badge_class = match($lead['status']) {
                     </p>
                     <?php else: ?>
                     <div class="timeline">
-                        <?php foreach ($historico as $item): ?>
-                        <div class="d-flex mb-3">
-                            <div class="flex-shrink-0">
-                                <i class="bi bi-circle-fill text-primary" style="font-size: 8px;"></i>
+                        <?php foreach ($historico as $item): 
+                            // Define ícone e cor baseado no tipo de evento
+                            $icone = 'bi-circle-fill';
+                            $cor = 'text-primary';
+                            
+                            switch($item['tipo_evento']) {
+                                case 'cliente':
+                                    $icone = 'bi-person-check-fill';
+                                    $cor = 'text-success';
+                                    break;
+                                case 'kyc':
+                                    $icone = 'bi-file-earmark-text-fill';
+                                    $cor = 'text-info';
+                                    break;
+                                case 'kyc_status':
+                                    $icone = 'bi-arrow-repeat';
+                                    $cor = 'text-warning';
+                                    break;
+                                case 'lead':
+                                default:
+                                    if (strpos($item['acao'], 'email_') === 0) {
+                                        $icone = 'bi-envelope-fill';
+                                        $cor = 'text-primary';
+                                    } elseif (strpos($item['acao'], 'status_') === 0) {
+                                        $icone = 'bi-arrow-repeat';
+                                        $cor = 'text-info';
+                                    } elseif ($item['acao'] === 'registro_completado') {
+                                        $icone = 'bi-check-circle-fill';
+                                        $cor = 'text-success';
+                                    }
+                                    break;
+                            }
+                        ?>
+                        <div class="d-flex mb-3 align-items-start">
+                            <div class="flex-shrink-0 me-3">
+                                <i class="bi <?= $icone ?> <?= $cor ?>" style="font-size: 1.2rem;"></i>
                             </div>
-                            <div class="flex-grow-1 ms-3">
-                                <p class="mb-1">
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
                                     <strong><?= htmlspecialchars($item['acao']) ?></strong>
-                                </p>
-                                <p class="text-muted mb-0"><?= htmlspecialchars($item['descricao']) ?></p>
+                                    <small class="text-muted"><?= date('d/m/Y H:i', strtotime($item['created_at'])) ?></small>
+                                </div>
+                                <p class="mb-1"><?= htmlspecialchars($item['descricao']) ?></p>
                                 <small class="text-muted">
-                                    <i class="bi bi-person"></i> <?= htmlspecialchars($item['usuario_nome'] ?? 'Sistema') ?> -
-                                    <i class="bi bi-clock"></i> <?= date('d/m/Y H:i', strtotime($item['created_at'])) ?>
+                                    <i class="bi bi-person"></i> <?= htmlspecialchars($item['usuario_nome']) ?>
+                                    <?php if ($item['tipo_evento'] !== 'lead'): ?>
+                                        <span class="badge bg-<?= $item['tipo_evento'] === 'cliente' ? 'success' : ($item['tipo_evento'] === 'kyc' ? 'info' : 'warning') ?> ms-2">
+                                            <?= strtoupper($item['tipo_evento']) ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </small>
                             </div>
                         </div>
@@ -236,18 +308,37 @@ $badge_class = match($lead['status']) {
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-primary" onclick="enviarFormularioKYC(<?= $lead_id ?>)">
-                            <i class="bi bi-file-earmark-check-fill"></i> Enviar Formulário KYC
-                        </button>
+                        <!-- Botão principal com dropdown -->
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-primary" onclick="abrirModalEnvioKYC(<?= $lead_id ?>)">
+                                <i class="bi bi-file-earmark-check-fill"></i> Enviar Formulário de Cadastro
+                            </button>
+                            <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="visually-hidden">Opções</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" onclick="enviarKYCPorEmail(<?= $lead_id ?>); return false;">
+                                    <i class="bi bi-envelope"></i> Enviar por Email
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="enviarKYCPorWhatsApp(<?= $lead_id ?>); return false;">
+                                    <i class="bi bi-whatsapp"></i> Enviar por WhatsApp
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" onclick="apenasGerarLink(<?= $lead_id ?>); return false;">
+                                    <i class="bi bi-link-45deg"></i> Apenas gerar link
+                                </a></li>
+                            </ul>
+                        </div>
+                        
                         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#changeStatusModal">
                             <i class="bi bi-arrow-repeat"></i> Alterar Status
                         </button>
                         <a href="https://wa.me/55<?= preg_replace('/\D/', '', $lead['whatsapp']) ?>" 
                            target="_blank" class="btn btn-success">
-                            <i class="bi bi-whatsapp"></i> Enviar WhatsApp
+                            <i class="bi bi-whatsapp"></i> Contato WhatsApp
                         </a>
                         <a href="mailto:<?= htmlspecialchars($lead['email']) ?>" class="btn btn-outline-secondary">
-                            <i class="bi bi-envelope"></i> Enviar E-mail
+                            <i class="bi bi-envelope"></i> Contato E-mail
                         </a>
                     </div>
                 </div>
@@ -267,12 +358,6 @@ $badge_class = match($lead['status']) {
                     <div class="mb-3">
                         <label class="text-muted small">Empresa Parceira</label>
                         <p class="mb-0"><?= htmlspecialchars($lead['empresa_parceira_nome']) ?></p>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($lead['responsavel_nome']): ?>
-                    <div class="mb-3">
-                        <label class="text-muted small">Responsável</label>
-                        <p class="mb-0"><?= htmlspecialchars($lead['responsavel_nome']) ?></p>
                     </div>
                     <?php endif; ?>
                     <div class="mb-0">
@@ -320,24 +405,115 @@ $badge_class = match($lead['status']) {
     </div>
 </div>
 
+<!-- Modal de Envio de Cadastro -->
+<div class="modal fade" id="envioKYCModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-send-fill"></i> Enviar Formulário de Cadastro</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Lead:</strong> <?= htmlspecialchars($lead['nome']) ?></p>
+                <p><strong>Email:</strong> <?= htmlspecialchars($lead['email']) ?></p>
+                <p><strong>WhatsApp:</strong> <?= htmlspecialchars($lead['whatsapp']) ?></p>
+                
+                <hr>
+                
+                <h6 class="mb-3">Escolha o método de envio:</h6>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success btn-lg" onclick="executarEnvioKYC('email')">
+                        <i class="bi bi-envelope-fill"></i> Enviar por Email
+                        <small class="d-block">Envio automático do formulário de registro</small>
+                    </button>
+                    
+                    <button class="btn btn-success btn-lg" onclick="executarEnvioKYC('whatsapp')">
+                        <i class="bi bi-whatsapp"></i> Enviar por WhatsApp
+                        <small class="d-block">Abre WhatsApp com mensagem pronta</small>
+                    </button>
+                    
+                    <button class="btn btn-outline-secondary" onclick="executarEnvioKYC('link')">
+                        <i class="bi bi-link-45deg"></i> Apenas gerar link
+                        <small class="d-block">Copia link para envio manual</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Enviar formulário KYC para o lead
-function enviarFormularioKYC(leadId) {
-    if (!confirm('Deseja enviar o link do formulário KYC para este lead?')) {
-        return;
-    }
+let leadIdAtual = <?= $lead_id ?>;
+
+// Abre modal de envio KYC
+function abrirModalEnvioKYC(leadId) {
+    leadIdAtual = leadId;
+    const modal = new bootstrap.Modal(document.getElementById('envioKYCModal'));
+    modal.show();
+}
+
+// Envio por email direto
+function enviarKYCPorEmail(leadId) {
+    executarEnvioKYC('email', leadId);
+}
+
+// Envio por WhatsApp direto  
+function enviarKYCPorWhatsApp(leadId) {
+    executarEnvioKYC('whatsapp', leadId);
+}
+
+// Apenas gerar link
+function apenasGerarLink(leadId) {
+    executarEnvioKYC('link', leadId);
+}
+
+// Executa o envio do KYC
+function executarEnvioKYC(metodo, leadId = null) {
+    const idLead = leadId || leadIdAtual;
+    
+    // Fecha modal se estiver aberto
+    const modal = bootstrap.Modal.getInstance(document.getElementById('envioKYCModal'));
+    if (modal) modal.hide();
+    
+    // Mostra loading
+    const loadingMsg = metodo === 'email' ? 'Enviando email...' : 
+                       metodo === 'whatsapp' ? 'Preparando WhatsApp...' : 
+                       'Gerando link...';
+    
+    // Você pode adicionar um spinner aqui
+    console.log(loadingMsg);
     
     fetch('ajax_send_kyc_to_lead.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: leadId })
+        body: JSON.stringify({ 
+            lead_id: idLead,
+            metodo: metodo 
+        })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('✅ ' + data.message + '\n\nLink: ' + data.kyc_url);
-            // Atualiza status para "contatado" automaticamente
-            location.reload();
+            if (metodo === 'email') {
+                if (data.email_enviado) {
+                    alert('✅ ' + data.message);
+                } else {
+                    alert('⚠️ Email não configurado.\n\nLink gerado:\n' + data.kyc_url);
+                    copiarParaClipboard(data.kyc_url);
+                }
+            } else if (metodo === 'whatsapp') {
+                // Abre WhatsApp em nova aba
+                window.open(data.whatsapp_url, '_blank');
+                alert('📱 WhatsApp aberto! Envie a mensagem para o lead.');
+            } else {
+                // Apenas link - copia para clipboard
+                copiarParaClipboard(data.kyc_url);
+                alert('✅ Link copiado para a área de transferência!\n\n' + data.kyc_url);
+            }
+            
+            // Recarrega página para atualizar status
+            setTimeout(() => location.reload(), 1500);
         } else {
             let errorMsg = '❌ Erro: ' + data.message;
             if (data.debug) {
@@ -352,8 +528,28 @@ function enviarFormularioKYC(leadId) {
     })
     .catch(error => {
         console.error('Erro:', error);
-        alert('Erro de conexão ao enviar formulário KYC');
+        alert('❌ Erro de conexão ao enviar formulário KYC');
     });
+}
+
+// Copia texto para clipboard
+function copiarParaClipboard(texto) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto);
+    } else {
+        // Fallback para navegadores antigos
+        const textarea = document.createElement('textarea');
+        textarea.value = texto;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+    }
+}
+
+// Função antiga mantida para compatibilidade
+function enviarFormularioKYC(leadId) {
+    abrirModalEnvioKYC(leadId);
 }
 
 // Alterar status do lead

@@ -105,34 +105,38 @@ try {
             </div>
         </div>
         <div class="col-md-2">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm border-start border-primary border-3">
                 <div class="card-body">
                     <h6 class="text-muted mb-1">Novos</h6>
                     <h3 class="mb-0 text-primary"><?= $stats['novos'] ?></h3>
+                    <small class="text-muted">Capturados</small>
                 </div>
             </div>
         </div>
         <div class="col-md-2">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm border-start border-info border-3">
                 <div class="card-body">
                     <h6 class="text-muted mb-1">Contatados</h6>
                     <h3 class="mb-0 text-info"><?= $stats['contatados'] ?></h3>
+                    <small class="text-muted">Em negociação</small>
                 </div>
             </div>
         </div>
         <div class="col-md-2">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm border-start border-warning border-3">
                 <div class="card-body">
                     <h6 class="text-muted mb-1">Qualificados</h6>
                     <h3 class="mb-0 text-warning"><?= $stats['qualificados'] ?></h3>
+                    <small class="text-muted">Registrados</small>
                 </div>
             </div>
         </div>
         <div class="col-md-2">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm border-start border-success border-3">
                 <div class="card-body">
                     <h6 class="text-muted mb-1">Convertidos</h6>
                     <h3 class="mb-0 text-success"><?= $stats['convertidos'] ?></h3>
+                    <small class="text-muted">KYC enviado</small>
                 </div>
             </div>
         </div>
@@ -216,14 +220,14 @@ try {
                         </tr>
                         <?php else: ?>
                         <?php foreach ($leads as $lead): 
-                            // Define classe do badge por status
-                            $badge_class = match($lead['status']) {
-                                'novo' => 'bg-primary',
-                                'contatado' => 'bg-info',
-                                'qualificado' => 'bg-warning text-dark',
-                                'convertido' => 'bg-success',
-                                'perdido' => 'bg-secondary',
-                                default => 'bg-light text-dark'
+                            // Define classe e descrição do badge por status
+                            $badge_info = match($lead['status']) {
+                                'novo' => ['class' => 'bg-primary', 'icon' => 'bi-circle-fill', 'text' => 'Novo', 'desc' => 'Aguardando contato'],
+                                'contatado' => ['class' => 'bg-info', 'icon' => 'bi-telephone-fill', 'text' => 'Contatado', 'desc' => 'Em negociação'],
+                                'qualificado' => ['class' => 'bg-warning text-dark', 'icon' => 'bi-person-check-fill', 'text' => 'Qualificado', 'desc' => 'Registrado como cliente'],
+                                'convertido' => ['class' => 'bg-success', 'icon' => 'bi-check-circle-fill', 'text' => 'Convertido', 'desc' => 'KYC enviado'],
+                                'perdido' => ['class' => 'bg-secondary', 'icon' => 'bi-x-circle-fill', 'text' => 'Perdido', 'desc' => 'Sem interesse'],
+                                default => ['class' => 'bg-light text-dark', 'icon' => 'bi-question-circle', 'text' => ucfirst($lead['status']), 'desc' => '']
                             };
                         ?>
                         <tr>
@@ -261,9 +265,12 @@ try {
                             </td>
                             <?php endif; ?>
                             <td>
-                                <span class="badge <?= $badge_class ?>">
-                                    <?= ucfirst($lead['status']) ?>
+                                <span class="badge <?= $badge_info['class'] ?>" title="<?= $badge_info['desc'] ?>">
+                                    <i class="bi <?= $badge_info['icon'] ?>"></i> <?= $badge_info['text'] ?>
                                 </span>
+                                <?php if ($badge_info['desc']): ?>
+                                <br><small class="text-muted"><?= $badge_info['desc'] ?></small>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <small><?= date('d/m/Y H:i', strtotime($lead['created_at'])) ?></small>
@@ -271,15 +278,8 @@ try {
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
                                     <a href="lead_detail.php?id=<?= $lead['id'] ?>" class="btn btn-outline-primary" title="Ver detalhes">
-                                        <i class="bi bi-eye"></i>
+                                        <i class="bi bi-eye"></i> Ver Detalhes
                                     </a>
-                                    <?php if ($lead['status'] !== 'convertido'): ?>
-                                    <button onclick="enviarKYCRapido(<?= $lead['id'] ?>)" 
-                                            class="btn btn-outline-success" 
-                                            title="Enviar Formulário KYC">
-                                        <i class="bi bi-file-earmark-check"></i>
-                                    </button>
-                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -301,52 +301,5 @@ try {
         <?php endif; ?>
     </div>
 </div>
-
-<script>
-// Função rápida para enviar KYC diretamente da lista
-function enviarKYCRapido(leadId) {
-    if (!confirm('Deseja enviar o formulário KYC para este lead?')) {
-        return;
-    }
-    
-    const btn = event.target.closest('button');
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    
-    fetch('ajax_send_kyc_to_lead.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: leadId })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('✅ ' + data.message + '\n\nLink gerado com sucesso!');
-            // Mostra o link copiável
-            prompt('Link do formulário KYC (Ctrl+C para copiar):', data.kyc_url);
-            location.reload();
-        } else {
-            let errorMsg = '❌ Erro: ' + data.message;
-            if (data.debug) {
-                errorMsg += '\n\nDebug:';
-                errorMsg += '\n- Lead pertence à empresa ID: ' + data.debug.lead_empresa;
-                errorMsg += '\n- Você está na empresa ID: ' + data.debug.user_empresa;
-                errorMsg += '\n- Seu papel: ' + data.debug.user_role;
-            }
-            alert(errorMsg);
-            console.error('Erro detalhado:', data);
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-        }
-    })
-    .catch(error => {
-        console.error('Erro:', error);
-        alert('Erro de conexão');
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-    });
-}
-</script>
 
 <?php require_once 'footer.php'; ?>

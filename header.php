@@ -7,12 +7,15 @@
 if ($is_logged_in && isset($_SESSION['user_empresa_id']) && isset($pdo)) {
     try {
         // Busca a configuração whitelabel vinculada ao 'empresa_id' do usuário logado
-        $stmt_wl_admin = $pdo->prepare("SELECT logo_url, cor_variavel FROM configuracoes_whitelabel WHERE empresa_id = ?");
+        $stmt_wl_admin = $pdo->prepare("SELECT nome_empresa, logo_url, cor_variavel FROM configuracoes_whitelabel WHERE empresa_id = ?");
         $stmt_wl_admin->execute([$_SESSION['user_empresa_id']]);
         $config_wl_admin = $stmt_wl_admin->fetch(PDO::FETCH_ASSOC);
         
         if ($config_wl_admin) {
             // Sobrepõe as variáveis padrão vindas do bootstrap
+            if (!empty($config_wl_admin['nome_empresa'])) {
+                $nome_empresa_whitelabel = $config_wl_admin['nome_empresa'];
+            }
             if (!empty($config_wl_admin['logo_url'])) {
                 $logo_url = $config_wl_admin['logo_url'];
             }
@@ -83,6 +86,78 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
         .sidebar-nav-link.active i {
             color: #ffffff;
         }
+
+        /* Estilos do Colofon/Footer da Sidebar */
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 1.5rem 1rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(0,0,0,0.02) 100%);
+        }
+        
+        .sidebar-colophon {
+            text-align: center;
+        }
+        
+        .colophon-logo {
+            margin-bottom: 0.75rem;
+        }
+        
+        .verify-logo {
+            max-width: 32px;
+            height: auto;
+        }
+        
+        .verify-logo:hover {
+            opacity: 1;
+        }
+        
+        .colophon-text {
+            font-size: 0.75rem;
+            color: #6c757d;
+            line-height: 1.4;
+        }
+        
+        .colophon-text .copyright {
+            margin-bottom: 0.5rem;
+        }
+        
+        .colophon-text .copyright i {
+            font-size: 0.7rem;
+            margin-right: 2px;
+        }
+        
+        .colophon-text .license {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        
+        .colophon-text .license i {
+            color: var(--primary-color);
+            margin-right: 3px;
+        }
+        
+        .colophon-text .license strong {
+            color: #495057;
+            font-weight: 600;
+        }
+        
+        .colophon-text small {
+            display: block;
+            font-size: 0.7rem;
+        }
+
+        /* Ajuste para garantir que a sidebar tenha flex column para empurrar o footer para baixo */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
@@ -123,43 +198,45 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
 
                 // Menu do Superadmin
                 if ($is_superadmin): ?>
-                    <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
+                    <a href="<?= $path_prefix ?>dashboard_analytics" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
                     </a>
                     
-                        <div class="sidebar-section">
-                            <button class="sidebar-section-header">
-                                <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
-                                <i class="bi bi-chevron-down chevron"></i>
-                            </button>
-                            <div class="sidebar-section-content">
-                                <a href="<?= $path_prefix ?>consulta_cnpj.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
-                                    <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
-                                </a>
-                                <a href="<?= $path_prefix ?>consultas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
-                                    <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
-                                </a>
-                            </div>
-                        </div>
-                    
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
-                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-search"></i> <span class="link-text">Consultas</span>
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            <a href="<?= $path_prefix ?>consulta_cnpj" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consulta_cnpj.php') ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Consulta CNPJ</span>
                             </a>
-                            <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
-                                <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
+                            <a href="<?= $path_prefix ?>consultas" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'consultas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-clock-history"></i> <span class="link-text">Histórico</span>
                             </a>
                         </div>
                     </div>
                     
-                    <a href="<?= $path_prefix ?>leads.php" class="sidebar-nav-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
-                        <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
-                    </a>
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-briefcase"></i> <span class="link-text">Painel de Negócios</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>leads" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_list" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>kyc_form" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>clientes" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
+                            </a>
+                        </div>
+                    </div>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
@@ -167,14 +244,8 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>empresas.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">
-                                <i class="bi bi-building"></i> <span class="link-text">Empresas</span>
-                            </a>
                             <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
                                 <i class="bi bi-people"></i> <span class="link-text">Usuários</span>
-                            </a>
-                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
                             </a>
                         </div>
                     </div>
@@ -182,9 +253,21 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                     <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
                         <i class="bi bi-gear"></i> <span class="link-text">Configurações</span>
                     </a>
-                    <a href="<?= $path_prefix ?>admin_import.php" class="sidebar-nav-link <?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">
-                        <i class="bi bi-cloud-upload"></i> <span class="link-text">Importar Listas</span>
-                    </a>
+                    
+                    <div class="sidebar-section">
+                        <button class="sidebar-section-header">
+                            <i class="bi bi-shield-check"></i> <span class="link-text">Painel Verify</span>
+                            <i class="bi bi-chevron-down chevron"></i>
+                        </button>
+                        <div class="sidebar-section-content">
+                            <a href="<?= $path_prefix ?>empresas.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['empresas.php', 'empresa_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-building"></i> <span class="link-text">Empresas</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>admin_import.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">
+                                <i class="bi bi-cloud-upload"></i> <span class="link-text">Importar Listas</span>
+                            </a>
+                        </div>
+                    </div>
 
                 <?php // Menu do Admin
                 elseif ($is_admin): ?>
@@ -209,22 +292,24 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
-                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-briefcase"></i> <span class="link-text">Painel de Negócios</span>
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            <a href="<?= $path_prefix ?>leads.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
                             </a>
                             <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
                                 <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
                             </a>
+                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
+                            </a>
                         </div>
                     </div>
-                    
-                    <a href="<?= $path_prefix ?>leads.php" class="sidebar-nav-link <?= in_array($current_page_base, ['leads.php', 'lead_detail.php']) ? 'active' : '' ?>">
-                        <i class="bi bi-funnel-fill"></i> <span class="link-text">Leads</span>
-                    </a>
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
@@ -235,16 +320,12 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             <a href="<?= $path_prefix ?>usuarios.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['usuarios.php', 'usuario_edit.php']) ? 'active' : '' ?>">
                                 <i class="bi bi-people"></i> <span class="link-text">Usuários</span>
                             </a>
-                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
-                            </a>
                         </div>
                     </div>
                     
                     <a href="<?= $path_prefix ?>configuracoes.php" class="sidebar-nav-link <?= ($current_page_base == 'configuracoes.php') ? 'active' : '' ?>">
                         <i class="bi bi-gear"></i> <span class="link-text">Configurações</span>
                     </a>
-                
 
                 <?php // Menu do Analista
                 elseif ($is_analista): ?>
@@ -269,24 +350,23 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                     
                     <div class="sidebar-section">
                         <button class="sidebar-section-header">
-                            <i class="bi bi-clipboard-check"></i> <span class="link-text">KYC</span>
+                            <i class="bi bi-briefcase"></i> <span class="link-text">Painel de Negócios</span>
                             <i class="bi bi-chevron-down chevron"></i>
                         </button>
                         <div class="sidebar-section-content">
-                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
-                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
-                            </a>
                             <a href="<?= $path_prefix ?>kyc_list.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['kyc_list.php', 'kyc_evaluate.php']) ? 'active' : '' ?>">
                                 <i class="bi bi-search"></i> <span class="link-text">Análise KYC</span>
                             </a>
+                            <a href="<?= $path_prefix ?>kyc_form.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'kyc_form.php') ? 'active' : '' ?>">
+                                <i class="bi bi-file-earmark-plus"></i> <span class="link-text">Enviar KYC</span>
+                            </a>
+                            <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link sidebar-sub-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
+                                <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
+                            </a>
                         </div>
                     </div>
-                    
-                    <a href="<?= $path_prefix ?>clientes.php" class="sidebar-nav-link <?= in_array($current_page_base, ['clientes.php', 'cliente_edit.php']) ? 'active' : '' ?>">
-                        <i class="bi bi-person-badge"></i> <span class="link-text">Clientes</span>
-                    </a>
 
-                <?php // Menu Padrão (outros usuários logados)
+                <?php // Menu Padrão (usuário comum)
                 else: ?>
                     <a href="<?= $path_prefix ?>dashboard_analytics.php" class="sidebar-nav-link <?= in_array($current_page_base, ['dashboard.php', 'dashboard_analytics.php']) ? 'active' : '' ?>">
                         <i class="bi bi-speedometer2"></i> <span class="link-text">Dashboard</span>
@@ -318,6 +398,26 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                 </a>
                 <?php // --- FIM DA NOVA LÓGICA DE MENU --- ?>
             </nav>
+
+            <!-- Colofon / Footer da Sidebar -->
+            <div class="sidebar-footer">
+                <div class="sidebar-colophon">
+                    <div class="colophon-logo">
+                        <img src="<?= $path_prefix ?>imagens/logo verify.svg" alt="Verify KYC 2B" class="verify-logo">
+                    </div>
+                    <div class="colophon-text">
+                        <p class="copyright">
+                            <i class="bi bi-c-circle"></i> <?= date('Y') ?> Verify KYC 2B<br>
+                            <small>Todos os direitos reservados</small>
+                        </p>
+                        <?php if (!empty($nome_empresa_whitelabel)): ?>
+                        <p class="license">
+                            <i class="bi bi-award"></i> <small>Licenciado para<br><strong><?= htmlspecialchars($nome_empresa_whitelabel) ?></strong></small>
+                        </p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
         </aside>
         <main class='main-content'>
 
