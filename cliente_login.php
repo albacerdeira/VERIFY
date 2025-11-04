@@ -38,18 +38,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
         $senha = $_POST['senha'] ?? '';
+        $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 
         if (empty($email) || empty($senha)) {
             throw new Exception('Por favor, preencha todos os campos.');
         }
 
-        // --- CORREÇÃO AQUI ---
-        // Troca 'whitelabel_parceiro_id' por 'id_empresa_master'
-        $stmt = $pdo->prepare("SELECT id, nome_completo, password, email_verificado, status, id_empresa_master FROM kyc_clientes WHERE email = ?");
+        // Busca cliente e verifica rate limiting
+        $stmt = $pdo->prepare("
+            SELECT id, nome_completo, password, email_verificado, status, id_empresa_master, 
+                   failed_login_attempts, lockout_until 
+            FROM kyc_clientes 
+            WHERE email = ?
+        ");
         $stmt->execute([$email]);
         $cliente = $stmt->fetch();
+        
+        // Verifica se está bloqueado por tentativas excessivas
+        if ($cliente && $cliente['lockout_until'] && new DateTime($cliente['lockout_until']) > new DateTime()) {
+            $lockout_time = new DateTime($cliente['lockout_until']);
+            $now = new DateTime();
+            $diff = $now->diff($lockout_time);
+            $minutes = $diff->i;
+            
+            // Registra tentativa bloqueada
+            $stmt_log = $pdo->prepare("
+                INSERT INTO login_attempts (cliente_id, email, ip_address, user_agent, status, reason) 
+                VALUES (?, ?, ?, ?, 'blocked', 'Account locked due to multiple failed attempts')
+            ");
+            $stmt_log->execute([$cliente['id'], $email, $ip_address, $user_agent]);
+            
+            throw new Exception("Conta temporariamente bloqueada. Tente novamente em {$minutes} minutos.");
+        }
 
         if (!$cliente || !password_verify($senha, $cliente['password'])) {
+            // Incrementa tentativas falhas
+            if ($cliente) {
+                $failed_attempts = ($cliente['failed_login_attempts'] ?? 0) + 1;
+                $lockout_until = null;
+                
+                // Bloqueia após 5 tentativas por 15 minutos
+                if ($failed_attempts >= 5) {
+                    $lockout_until = (new DateTime())->modify('+15 minutes')->format('Y-m-d H:i:s');
+                }
+                
+                $stmt_update = $pdo->prepare("
+                    UPDATE kyc_clientes 
+                    SET failed_login_attempts = ?, lockout_until = ? 
+                    WHERE id = ?
+                ");
+                $stmt_update->execute([$failed_attempts, $lockout_until, $cliente['id']]);
+                
+                // Registra tentativa falha
+                $stmt_log = $pdo->prepare("
+                    INSERT INTO login_attempts (cliente_id, email, ip_address, user_agent, status, reason) 
+                    VALUES (?, ?, ?, ?, 'failed', 'Invalid password')
+                ");
+                $stmt_log->execute([$cliente['id'], $email, $ip_address, $user_agent]);
+                
+                if ($failed_attempts >= 5) {
+                    throw new Exception('Múltiplas tentativas falhas. Conta bloqueada por 15 minutos.');
+                }
+            } else {
+                // Email não encontrado - registra tentativa
+                $stmt_log = $pdo->prepare("
+                    INSERT INTO login_attempts (email, ip_address, user_agent, status, reason) 
+                    VALUES (?, ?, ?, 'failed', 'Email not found')
+                ");
+                $stmt_log->execute([$email, $ip_address, $user_agent]);
+            }
+            
             throw new Exception('Credenciais inválidas.');
         }
 
@@ -60,9 +119,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Sua conta está com status \'' . htmlspecialchars($cliente['status']) . '\'. Contate o suporte.');
         }
 
-        // Autenticação bem-sucedida. Configurar a sessão.
+        // Autenticação bem-sucedida
+        // Reseta tentativas falhas e atualiza último login
+        $stmt_reset = $pdo->prepare("
+            UPDATE kyc_clientes 
+            SET failed_login_attempts = 0, 
+                lockout_until = NULL,
+                ultimo_login = NOW(),
+                ultimo_ip = ?
+            WHERE id = ?
+        ");
+        $stmt_reset->execute([$ip_address, $cliente['id']]);
+        
+        // Registra login bem-sucedido
+        $stmt_log = $pdo->prepare("
+            INSERT INTO login_attempts (cliente_id, email, ip_address, user_agent, status, reason) 
+            VALUES (?, ?, ?, ?, 'success', 'Login successful')
+        ");
+        $stmt_log->execute([$cliente['id'], $email, $ip_address, $user_agent]);
+        
+        // Configurar a sessão
+        session_regenerate_id(true); // Segurança: regenera ID da sessão
         $_SESSION['cliente_id'] = $cliente['id'];
         $_SESSION['cliente_nome'] = $cliente['nome_completo'];
+        $_SESSION['login_time'] = time();
         
         // Redirecionamento Inteligente para o Dashboard CORRETO.
         $redirect_url = 'cliente_dashboard.php';
