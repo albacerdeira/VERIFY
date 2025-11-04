@@ -21,3 +21,6 @@ generate_hash.php
 # Pastas de backup
 bkp 18-10/
 bkp 19_10/
+
+# Pasta de arquivos de desenvolvimento/testes (não enviar para produção)
+no_upload/
