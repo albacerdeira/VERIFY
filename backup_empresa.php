@@ -15,7 +15,22 @@
  * Retorna: JSON para download ou erro em caso de falha
  */
 
+// Desabilita exibição de erros (vão para log)
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
+// Inicia buffer de output para evitar problemas com headers
+ob_start();
+
 require_once 'bootstrap.php';
+
+// Limpa qualquer output do bootstrap antes de enviar headers
+$buffer_content = ob_get_clean();
+
+// Se houver output inesperado, loga para debug
+if (!empty(trim($buffer_content))) {
+    error_log('[BACKUP WARNING] Output detectado antes dos headers: ' . substr($buffer_content, 0, 200));
+}
 
 // SEGURANÇA: Apenas superadmins podem fazer backup
 if (!$is_superadmin) {
@@ -227,15 +242,24 @@ try {
         count($kyc_empresas)
     ));
     
+    exit; // Garante que nada mais seja enviado após o JSON
+    
 } catch (Exception $e) {
+    // Limpa qualquer output que possa ter sido gerado
+    if (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
     http_response_code(500);
-    error_log('[BACKUP ERROR] ' . $e->getMessage());
+    error_log('[BACKUP ERROR] Empresa ID ' . $empresa_id . ' - ' . $e->getMessage());
     
     // Retorna erro em JSON
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage(),
-        'empresa_id' => $empresa_id
+        'empresa_id' => $empresa_id,
+        'trace' => $e->getTraceAsString()
     ], JSON_PRETTY_PRINT);
+    exit;
 }
