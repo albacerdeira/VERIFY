@@ -17,13 +17,16 @@ require_once 'config.php';
 $nome_empresa = 'Verify KYC';
 $cor_variavel = '#4f46e5';
 $logo_url = 'imagens/verify-kyc.png';
+
 $slug_contexto = $_GET['cliente'] ?? null;
+$empresa_id_slug = null;
 if ($slug_contexto && isset($pdo)) {
     try {
-        $stmt = $pdo->prepare("SELECT nome_empresa, cor_variavel, logo_url FROM configuracoes_whitelabel WHERE slug = ?");
+        $stmt = $pdo->prepare("SELECT empresa_id, nome_empresa, cor_variavel, logo_url FROM configuracoes_whitelabel WHERE slug = ?");
         $stmt->execute([$slug_contexto]);
         $config = $stmt->fetch();
         if ($config) {
+            $empresa_id_slug = $config['empresa_id'];
             $nome_empresa = $config['nome_empresa'];
             $cor_variavel = $config['cor_variavel'];
             $logo_url = $config['logo_url'];
@@ -46,13 +49,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Busca cliente e verifica rate limiting
-        $stmt = $pdo->prepare("
-            SELECT id, nome_completo, password, email_verificado, status, id_empresa_master, 
-                   failed_login_attempts, lockout_until 
-            FROM kyc_clientes 
-            WHERE email = ?
-        ");
-        $stmt->execute([$email]);
+        if ($empresa_id_slug) {
+            // Multi-empresa: busca cliente pelo email e empresa
+            $stmt = $pdo->prepare("
+                SELECT id, nome_completo, password, email_verificado, status, id_empresa_master, 
+                       failed_login_attempts, lockout_until 
+                FROM kyc_clientes 
+                WHERE email = ? AND id_empresa_master = ?
+            ");
+            $stmt->execute([$email, $empresa_id_slug]);
+        } else {
+            // Fallback: busca apenas por email (single-tenant ou sem slug)
+            $stmt = $pdo->prepare("
+                SELECT id, nome_completo, password, email_verificado, status, id_empresa_master, 
+                       failed_login_attempts, lockout_until 
+                FROM kyc_clientes 
+                WHERE email = ?
+            ");
+            $stmt->execute([$email]);
+        }
         $cliente = $stmt->fetch();
         
         // Verifica se está bloqueado por tentativas excessivas
@@ -72,44 +87,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception("Conta temporariamente bloqueada. Tente novamente em {$minutes} minutos.");
         }
 
-        if (!$cliente || !password_verify($senha, $cliente['password'])) {
+        if (!$cliente) {
+            // Email não encontrado para esta empresa - registra tentativa
+            $stmt_log = $pdo->prepare("
+                INSERT INTO login_attempts (email, ip_address, user_agent, status, reason) 
+                VALUES (?, ?, ?, 'failed', 'Email not found for this company')
+            ");
+            $stmt_log->execute([$email, $ip_address, $user_agent]);
+            throw new Exception('Usuário não encontrado para esta empresa.');
+        }
+        if (!password_verify($senha, $cliente['password'])) {
             // Incrementa tentativas falhas
-            if ($cliente) {
-                $failed_attempts = ($cliente['failed_login_attempts'] ?? 0) + 1;
-                $lockout_until = null;
-                
-                // Bloqueia após 5 tentativas por 15 minutos
-                if ($failed_attempts >= 5) {
-                    $lockout_until = (new DateTime())->modify('+15 minutes')->format('Y-m-d H:i:s');
-                }
-                
-                $stmt_update = $pdo->prepare("
-                    UPDATE kyc_clientes 
-                    SET failed_login_attempts = ?, lockout_until = ? 
-                    WHERE id = ?
-                ");
-                $stmt_update->execute([$failed_attempts, $lockout_until, $cliente['id']]);
-                
-                // Registra tentativa falha
-                $stmt_log = $pdo->prepare("
-                    INSERT INTO login_attempts (cliente_id, email, ip_address, user_agent, status, reason) 
-                    VALUES (?, ?, ?, ?, 'failed', 'Invalid password')
-                ");
-                $stmt_log->execute([$cliente['id'], $email, $ip_address, $user_agent]);
-                
-                if ($failed_attempts >= 5) {
-                    throw new Exception('Múltiplas tentativas falhas. Conta bloqueada por 15 minutos.');
-                }
-            } else {
-                // Email não encontrado - registra tentativa
-                $stmt_log = $pdo->prepare("
-                    INSERT INTO login_attempts (email, ip_address, user_agent, status, reason) 
-                    VALUES (?, ?, ?, 'failed', 'Email not found')
-                ");
-                $stmt_log->execute([$email, $ip_address, $user_agent]);
+            $failed_attempts = ($cliente['failed_login_attempts'] ?? 0) + 1;
+            $lockout_until = null;
+            // Bloqueia após 5 tentativas por 15 minutos
+            if ($failed_attempts >= 5) {
+                $lockout_until = (new DateTime())->modify('+15 minutes')->format('Y-m-d H:i:s');
             }
-            
-            throw new Exception('Credenciais inválidas.');
+            $stmt_update = $pdo->prepare("
+                UPDATE kyc_clientes 
+                SET failed_login_attempts = ?, lockout_until = ? 
+                WHERE id = ?
+            ");
+            $stmt_update->execute([$failed_attempts, $lockout_until, $cliente['id']]);
+            // Registra tentativa falha
+            $stmt_log = $pdo->prepare("
+                INSERT INTO login_attempts (cliente_id, email, ip_address, user_agent, status, reason) 
+                VALUES (?, ?, ?, ?, 'failed', 'Invalid password')
+            ");
+            $stmt_log->execute([$cliente['id'], $email, $ip_address, $user_agent]);
+            if ($failed_attempts >= 5) {
+                throw new Exception('Múltiplas tentativas falhas. Conta bloqueada por 15 minutos.');
+            }
+            throw new Exception('Senha incorreta.');
         }
 
         if (!$cliente['email_verificado']) {

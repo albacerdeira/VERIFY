@@ -162,10 +162,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('A selfie é obrigatória.');
         }
 
-        // Verifica se o e-mail já existe
-        $stmt_check = $pdo->prepare("SELECT id FROM kyc_clientes WHERE email = ?");
-        $stmt_check->execute([$email]);
-        if ($stmt_check->fetch()) { throw new Exception('Este e-mail já está cadastrado.'); }
+        // DEBUG: Log para verificar o id_empresa_master_contexto
+        error_log("=== VERIFICAÇÃO DE EMAIL ===");
+        error_log("Email: $email");
+        error_log("id_empresa_master_contexto: " . ($id_empresa_master_contexto ?? 'NULL'));
+        error_log("Slug contexto: " . ($slug_contexto ?? 'NULL'));
+
+        // Verifica se o e-mail já existe PARA ESTA EMPRESA ESPECÍFICA
+        // Permite que o mesmo email seja cliente de várias empresas
+        if ($id_empresa_master_contexto) {
+            // Se tem empresa, verifica apenas naquela empresa
+            $stmt_check = $pdo->prepare("SELECT id FROM kyc_clientes WHERE email = ? AND id_empresa_master = ?");
+            $stmt_check->execute([$email, $id_empresa_master_contexto]);
+        } else {
+            // Se não tem empresa (acesso direto), verifica globalmente (comportamento antigo)
+            $stmt_check = $pdo->prepare("SELECT id FROM kyc_clientes WHERE email = ?");
+            $stmt_check->execute([$email]);
+        }
+        
+        if ($stmt_check->fetch()) { 
+            $empresa_nome = $nome_empresa ?? 'esta plataforma';
+            throw new Exception("Este e-mail já está cadastrado em {$empresa_nome}. Por favor, faça login."); 
+        }
         
         // Preparação dos dados para inserção
         $codigo_verificacao = substr(bin2hex(random_bytes(5)), 0, 10);
