@@ -78,6 +78,16 @@ require_once 'header.php';
 
     <?php if ($error): ?><div class="alert alert-danger"><?= $error ?></div><?php endif; ?>
     <?php if ($success): ?><div class="alert alert-success"><?= $success ?></div><?php endif; ?>
+    
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <h6 class="alert-heading"><i class="bi bi-info-circle"></i> Recurso de Backup Disponível</h6>
+        <p class="mb-0">
+            Agora você pode fazer <strong>backup completo</strong> de qualquer empresa clicando no botão verde <i class="bi bi-download"></i> <strong>Backup</strong>. 
+            O arquivo JSON incluirá: dados da empresa, configurações whitelabel, usuários, leads, clientes, KYCs e avaliações.
+            <a href="no_upload/docs/BACKUP_EMPRESAS.md" target="_blank" class="alert-link">Ver documentação completa</a>
+        </p>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
 
     <section class="card mb-4">
         <div class="card-header"><h5 class="my-1">Adicionar Nova Empresa e Administrador</h5></div>
@@ -108,8 +118,30 @@ require_once 'header.php';
                             <td><?= htmlspecialchars($empresa['nome']) ?></td>
                             <td><?= htmlspecialchars($empresa['email']) ?></td>
                             <td class="text-end">
-                                <a href="configuracoes.php?id=<?= $empresa['id'] ?>" class="btn btn-sm btn-info">Editar / Configurar</a>
-                                <button class="btn btn-sm btn-danger delete-btn" data-bs-toggle="modal" data-bs-target="#deleteEmpresaModal" data-id="<?= $empresa['id'] ?>" data-nome="<?= htmlspecialchars($empresa['nome']) ?>">Excluir</button>
+                                <a href="configuracoes.php?id=<?= $empresa['id'] ?>" 
+                                   class="btn btn-sm btn-info" 
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-placement="top" 
+                                   title="Editar configurações e whitelabel da empresa">
+                                    <i class="bi bi-gear"></i> Configurar
+                                </a>
+                                <a href="backup_empresa.php?empresa_id=<?= $empresa['id'] ?>" 
+                                   class="btn btn-sm btn-success backup-btn" 
+                                   data-nome="<?= htmlspecialchars($empresa['nome']) ?>"
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-placement="top" 
+                                   title="Fazer backup completo: empresa, usuários, leads, clientes, KYCs e avaliações"
+                                   download>
+                                    <i class="bi bi-download"></i> Backup
+                                </a>
+                                <button class="btn btn-sm btn-danger delete-btn" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteEmpresaModal" 
+                                        data-id="<?= $empresa['id'] ?>" 
+                                        data-nome="<?= htmlspecialchars($empresa['nome']) ?>" 
+                                        title="Excluir empresa e todos os dados relacionados">
+                                    <i class="bi bi-trash"></i> Excluir
+                                </button>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -157,6 +189,32 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.querySelector('#delete-empresa-nome').textContent = nome;
         });
     }
+    
+    // Script para confirmação de Backup
+    document.querySelectorAll('.backup-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            const empresaNome = this.getAttribute('data-nome');
+            const confirmMsg = `Gerar backup completo de "${empresaNome}"?\n\n` +
+                             `Isso incluirá:\n` +
+                             `✓ Dados da empresa e configurações\n` +
+                             `✓ Usuários\n` +
+                             `✓ Leads e histórico\n` +
+                             `✓ Clientes e KYCs\n` +
+                             `✓ Avaliações e logs\n\n` +
+                             `O arquivo JSON será baixado automaticamente.`;
+            
+            if (!confirm(confirmMsg)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    });
+    
+    // Inicializa tooltips do Bootstrap
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
 });
 </script>
 
