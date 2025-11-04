@@ -67,41 +67,66 @@ try {
     // ======================================
     // 2. CONFIGURAÇÕES WHITELABEL
     // ======================================
-    $stmt_whitelabel = $pdo->prepare("SELECT * FROM configuracoes_whitelabel WHERE empresa_id = ?");
-    $stmt_whitelabel->execute([$empresa_id]);
-    $whitelabel = $stmt_whitelabel->fetch(PDO::FETCH_ASSOC);
+    try {
+        $stmt_whitelabel = $pdo->prepare("SELECT * FROM configuracoes_whitelabel WHERE empresa_id = ?");
+        $stmt_whitelabel->execute([$empresa_id]);
+        $whitelabel = $stmt_whitelabel->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("[BACKUP ERROR] Whitelabel query failed: " . $e->getMessage());
+        throw new Exception("Erro ao buscar configurações whitelabel: " . $e->getMessage());
+    }
     
     // ======================================
     // 3. USUÁRIOS DA EMPRESA
     // ======================================
-    $stmt_usuarios = $pdo->prepare("SELECT * FROM usuarios WHERE empresa_id = ?");
-    $stmt_usuarios->execute([$empresa_id]);
-    $usuarios = $stmt_usuarios->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $stmt_usuarios = $pdo->prepare("SELECT * FROM usuarios WHERE empresa_id = ?");
+        $stmt_usuarios->execute([$empresa_id]);
+        $usuarios = $stmt_usuarios->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("[BACKUP ERROR] Usuarios query failed: " . $e->getMessage());
+        throw new Exception("Erro ao buscar usuários: " . $e->getMessage());
+    }
     
     // ======================================
     // 4. LEADS DA EMPRESA
     // ======================================
-    $stmt_leads = $pdo->prepare("SELECT * FROM leads WHERE id_empresa_master = ?");
-    $stmt_leads->execute([$empresa_id]);
-    $leads = $stmt_leads->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $stmt_leads = $pdo->prepare("SELECT * FROM leads WHERE id_empresa_master = ?");
+        $stmt_leads->execute([$empresa_id]);
+        $leads = $stmt_leads->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("[BACKUP ERROR] Leads query failed: " . $e->getMessage());
+        throw new Exception("Erro ao buscar leads: " . $e->getMessage());
+    }
     
     // IDs dos leads para buscar histórico
     $lead_ids = array_column($leads, 'id');
     $leads_historico = [];
     
     if (!empty($lead_ids)) {
-        $placeholders = implode(',', array_fill(0, count($lead_ids), '?'));
-        $stmt_leads_hist = $pdo->prepare("SELECT * FROM leads_historico WHERE lead_id IN ($placeholders)");
-        $stmt_leads_hist->execute($lead_ids);
-        $leads_historico = $stmt_leads_hist->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $placeholders = implode(',', array_fill(0, count($lead_ids), '?'));
+            $stmt_leads_hist = $pdo->prepare("SELECT * FROM leads_historico WHERE lead_id IN ($placeholders)");
+            $stmt_leads_hist->execute($lead_ids);
+            $leads_historico = $stmt_leads_hist->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("[BACKUP ERROR] Leads historico query failed: " . $e->getMessage());
+            $leads_historico = []; // Continua sem histórico se falhar
+        }
     }
     
     // ======================================
     // 5. CLIENTES KYC
     // ======================================
-    $stmt_clientes = $pdo->prepare("SELECT * FROM kyc_clientes WHERE id_empresa_master = ?");
-    $stmt_clientes->execute([$empresa_id]);
-    $clientes = $stmt_clientes->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $stmt_clientes = $pdo->prepare("SELECT * FROM kyc_clientes WHERE id_empresa_master = ?");
+        $stmt_clientes->execute([$empresa_id]);
+        $clientes = $stmt_clientes->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("[BACKUP ERROR] Clientes query failed: " . $e->getMessage());
+        throw new Exception("Erro ao buscar clientes: " . $e->getMessage());
+    }
     
     // IDs dos clientes para buscar KYCs de empresas
     $cliente_ids = array_column($clientes, 'id');
@@ -112,18 +137,28 @@ try {
         $placeholders_clientes = implode(',', array_fill(0, count($cliente_ids), '?'));
         
         // KYC Empresas
-        $stmt_kyc_empresas = $pdo->prepare("SELECT * FROM kyc_empresas WHERE cliente_id IN ($placeholders_clientes)");
-        $stmt_kyc_empresas->execute($cliente_ids);
-        $kyc_empresas = $stmt_kyc_empresas->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $stmt_kyc_empresas = $pdo->prepare("SELECT * FROM kyc_empresas WHERE cliente_id IN ($placeholders_clientes)");
+            $stmt_kyc_empresas->execute($cliente_ids);
+            $kyc_empresas = $stmt_kyc_empresas->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("[BACKUP ERROR] KYC Empresas query failed: " . $e->getMessage());
+            $kyc_empresas = []; // Continua sem KYC se falhar
+        }
         
         // IDs das empresas KYC para buscar avaliações
         $kyc_empresa_ids = array_column($kyc_empresas, 'id');
         
         if (!empty($kyc_empresa_ids)) {
-            $placeholders_kyc = implode(',', array_fill(0, count($kyc_empresa_ids), '?'));
-            $stmt_avaliacoes = $pdo->prepare("SELECT * FROM kyc_avaliacoes WHERE empresa_id IN ($placeholders_kyc)");
-            $stmt_avaliacoes->execute($kyc_empresa_ids);
-            $kyc_avaliacoes = $stmt_avaliacoes->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $placeholders_kyc = implode(',', array_fill(0, count($kyc_empresa_ids), '?'));
+                $stmt_avaliacoes = $pdo->prepare("SELECT * FROM kyc_avaliacoes WHERE empresa_id IN ($placeholders_kyc)");
+                $stmt_avaliacoes->execute($kyc_empresa_ids);
+                $kyc_avaliacoes = $stmt_avaliacoes->fetchAll(PDO::FETCH_ASSOC);
+            } catch (PDOException $e) {
+                error_log("[BACKUP ERROR] KYC Avaliacoes query failed: " . $e->getMessage());
+                $kyc_avaliacoes = []; // Continua sem avaliações se falhar
+            }
         }
     }
     

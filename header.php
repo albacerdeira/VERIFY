@@ -266,6 +266,9 @@ $logo_url_final = $path_prefix . ltrim(htmlspecialchars($logo_url), '/') . $logo
                             <a href="<?= $path_prefix ?>admin_import.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'admin_import.php') ? 'active' : '' ?>">
                                 <i class="bi bi-cloud-upload"></i> <span class="link-text">Importar Listas</span>
                             </a>
+                            <a href="<?= $path_prefix ?>ferramentas.php" class="sidebar-nav-link sidebar-sub-link <?= ($current_page_base == 'ferramentas.php') ? 'active' : '' ?>">
+                                <i class="bi bi-tools"></i> <span class="link-text">Ferramentas Debug</span>
+                            </a>
                         </div>
                     </div>
 
