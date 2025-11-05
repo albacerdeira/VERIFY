@@ -18,28 +18,32 @@ RewriteBase /
 
 # ================================================
 # IMPORTANTE: Arquivos .php são acessados DIRETAMENTE
-# Não aplicar nenhuma regra de rewrite para arquivos .php
+# Arquivos ajax_* NUNCA passam por rewrite (protege POST)
 # ================================================
 
 # ================================================
-# 1. NÃO REMOVER .php - Desabilitado para evitar problemas com POST
+# 1. REMOVER .php DAS URLs (exceto arquivos AJAX)
 # ================================================
-# Regras de URL rewrite DESABILITADAS para manter requisições POST funcionando
-# Se precisar de URLs amigáveis, configure no nível do Cloudflare
+# Permite acessar páginas sem .php SOMENTE se não for arquivo ajax_*
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteCond %{REQUEST_URI} !^/ajax_
+RewriteCond %{REQUEST_URI} !^/test_
+RewriteCond %{REQUEST_URI} !^/debug_
+RewriteRule ^(.+)$ $1.php [L,QSA]
 
-# RewriteCond %{REQUEST_METHOD} =GET
-# RewriteCond %{REQUEST_FILENAME} !-d
-# RewriteCond %{REQUEST_FILENAME} !-f
-# RewriteCond %{REQUEST_FILENAME}\.php -f
-# RewriteRule ^(.+)$ $1.php [L,QSA]
-
 # ================================================
-# 2. NÃO REDIRECIONAR - Desabilitado para manter POST
+# 2. REDIRECIONAR .php PARA SEM EXTENSÃO (apenas navegação GET, exceto AJAX)
 # ================================================
-# Regra de redirect desabilitada para manter requisições POST
-# RewriteCond %{REQUEST_METHOD} =GET
-# RewriteCond %{THE_REQUEST} ^GET\ /[^?\s]+\.php
-# RewriteRule ^(.+)\.php$ /$1 [R=301,L]
+# Redireciona URLs com .php para sem extensão (só GET, nunca POST)
+# NUNCA redireciona ajax_*, test_*, debug_*
+RewriteCond %{REQUEST_METHOD} =GET
+RewriteCond %{THE_REQUEST} ^GET\ /[^?\s]+\.php
+RewriteCond %{REQUEST_URI} !^/ajax_
+RewriteCond %{REQUEST_URI} !^/test_
+RewriteCond %{REQUEST_URI} !^/debug_
+RewriteRule ^(.+)\.php$ /$1 [R=301,L]
 
 # ================================================
 # 3. SEGURANÇA - Bloquear acesso a arquivos sensíveis
