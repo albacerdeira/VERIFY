@@ -298,88 +298,6 @@ error_reporting(E_ALL);
 
                 <hr class="my-4">
 
-                <!-- STATUS E SENHA -->
-                <h5 class="mb-2 text-primary" style="font-size: 1.05rem;">🔒 Segurança</h5>
-
-                <!-- Campo Status da Conta (fora do bloco de dados sensíveis) -->
-                <div class="mb-3 border rounded p-3 bg-light">
-                    <label for="status" class="form-label">Status da Conta</label>
-                    <select class="form-select" id="status" name="status">
-                        <option value="ativo" <?= $cliente['status'] === 'ativo' ? 'selected' : '' ?>>Ativo</option>
-                        <option value="pendente" <?= $cliente['status'] === 'pendente' ? 'selected' : '' ?>>Pendente</option>
-                        <option value="inativo" <?= $cliente['status'] === 'inativo' ? 'selected' : '' ?>>Inativo</option>
-                        <option value="suspenso" <?= $cliente['status'] === 'suspenso' ? 'selected' : '' ?>>Suspenso</option>
-                    </select>
-                    <small class="text-muted">Este campo <strong>não exige verificação de identidade</strong> (ação administrativa)</small>
-                </div>
-
-                <div class="mb-4">
-                    <label for="nova_senha" class="form-label">Redefinir Senha</label>
-                    <input type="password" class="form-control" id="nova_senha" name="nova_senha" placeholder="Deixe em branco para não alterar">
-                </div>
-
-                <!-- Campo oculto para token de verificação facial -->
-                <input type="hidden" name="verification_token" id="verification_token" value="">
-
-                <!-- Alerta de verificação obrigatória -->
-                <div id="verification-alert" class="alert alert-warning mb-3" role="alert">
-                    <i class="bi bi-shield-exclamation"></i>
-                    <strong>Atenção:</strong> Se você alterar <u>Nome</u>, <u>Email</u>, <u>CPF</u> ou <u>Senha</u>, será necessário verificação de identidade.<br>
-                    <small class="text-muted">Alteração de <strong>Status da Conta</strong> <u>não exige</u> verificação de identidade.</small>
-                    
-                    <hr class="my-3">
-                    
-                    <div class="row g-2">
-                        <!-- Área de Upload de Documento -->
-                        <div class="col-12">
-                            <h6 class="mb-2"><i class="bi bi-file-earmark-person"></i> Verificação por Documento (RG ou CNH)</h6>
-                            <p class="small text-muted mb-2">Envie uma foto do seu RG ou CNH. Validaremos automaticamente nome, CPF, RG e foto.</p>
-                            
-                            <!-- Status da verificação por documento -->
-                            <div id="doc-verification-status" class="alert d-none mb-2" role="alert"></div>
-                            
-                            <!-- Botão de upload -->
-                            <div class="d-grid">
-                                <label for="document-upload-direct" class="btn btn-primary">
-                                    <i class="bi bi-upload"></i> Selecionar Foto do Documento
-                                </label>
-                                <input type="file" id="document-upload-direct" accept="image/jpeg,image/jpg,image/png" style="display:none;" onchange="handleDocumentUploadDirect(event)">
-                            </div>
-                            
-                            <!-- Preview do documento -->
-                            <div id="doc-preview-direct" class="mt-3" style="display:none;">
-                                <img id="doc-image-preview" src="" alt="Preview" class="img-fluid border rounded" style="max-height: 300px;">
-                                <div class="mt-2">
-                                    <button type="button" class="btn btn-success btn-sm" onclick="verifyDocumentDirect()">
-                                        <i class="bi bi-shield-check"></i> Validar Documento
-                                    </button>
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick="resetDocumentDirect()">
-                                        <i class="bi bi-x-circle"></i> Cancelar
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <!-- Loader -->
-                            <div id="doc-verification-loader-direct" class="text-center mt-3" style="display:none;">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Verificando...</span>
-                                </div>
-                                <p class="mt-2 small">Validando documento com OCR e comparação facial...</p>
-                            </div>
-                            
-                            <!-- Resultado da validação -->
-                            <div id="doc-validation-results-direct" class="mt-3" style="display:none;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Badge de verificação bem-sucedida -->
-                <div id="face-verified-badge" class="alert alert-success d-none" role="alert">
-                    <i class="bi bi-shield-check"></i>
-                    <strong>Identidade verificada!</strong> Você pode salvar as alterações.
-                </div>
-
-                <hr>
                 <button type="submit" class="btn btn-primary" id="btn-save-changes">Salvar Alterações</button>
                 <a href="clientes.php" class="btn btn-secondary">Voltar para a Lista</a>
             </form>
@@ -435,14 +353,54 @@ error_reporting(E_ALL);
                     ?>
                 </div>
 
+                <!-- Documento Enviado -->
+                <div class="text-center mb-3">
+                    <h6 class="text-muted mb-2">Documento Enviado</h6>
+                    <?php
+                    if (!empty($cliente['documento_foto_path'])) {
+                        $doc_path = htmlspecialchars($cliente['documento_foto_path']);
+                        $ext = strtolower(pathinfo($doc_path, PATHINFO_EXTENSION));
+                        $cache_buster = file_exists($doc_path) ? '?v=' . filemtime($doc_path) : '';
+                        $doc_web = '/' . ltrim($doc_path, '/') . $cache_buster;
+
+                        if (file_exists($doc_path)) { 
+                            if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
+                                echo '<img src="' . $doc_web . '" alt="Documento do Cliente" class="img-fluid rounded border shadow-sm" style="max-height: 250px; max-width: 100%;">';
+                            } elseif ($ext == 'pdf') {
+                                echo '<div class="alert alert-info text-center mb-0">';
+                                echo '<a href="' . $doc_web . '" target="_blank" class="alert-link"><i class="bi bi-file-pdf"></i> Visualizar PDF do Documento</a>';
+                                echo '</div>';
+                            } else {
+                                echo '<p class="text-muted mb-0"><a href="' . $doc_web . '" target="_blank"><i class="bi bi-paperclip"></i> ' . basename($doc_path) . '</a></p>';
+                            }
+                        } else {
+                             echo '<div class="alert alert-danger mb-0 small"><i class="bi bi-exclamation-triangle"></i> Arquivo não encontrado</div>';
+                        }
+                    } else {
+                        echo '<div class="alert alert-warning mb-0 small"><i class="bi bi-file-earmark"></i> Nenhum documento enviado</div>';
+                    }
+                    ?>
+                </div>
+
                 <!-- Botões de Verificação -->
-                <div class="d-grid gap-2 d-md-flex justify-content-md-center mb-3">
-                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalVerifyFace">
-                        <i class="bi bi-person-badge"></i> Selfie
+                <div class="d-grid gap-2 mb-3">
+                    <?php if (!empty($cliente['selfie_path'])): ?>
+                    <button type="button" class="btn btn-success btn-sm" onclick="viewDocument('selfie')">
+                        <i class="bi bi-eye"></i> Ver Selfie
                     </button>
-                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalVerifyDocumentDirect">
-                        <i class="bi bi-file-text"></i> documento
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($cliente['documento_foto_path'])): ?>
+                    <button type="button" class="btn btn-success btn-sm" onclick="viewDocument('documento')">
+                        <i class="bi bi-eye"></i> Ver Documento (RG/CNH)
                     </button>
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($cliente['selfie_path']) && !empty($cliente['documento_foto_path'])): ?>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="verifyBothDocuments()">
+                        <i class="bi bi-shield-check"></i> Verificar Documentos
+                    </button>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Card de Verificação Documental -->
@@ -454,16 +412,16 @@ error_reporting(E_ALL);
                         <?php
                         // Busca última verificação de documento
                         $stmt = $pdo->prepare("
-                            SELECT * FROM verificacoes_biometricas 
-                            WHERE cliente_id = ? AND tipo_verificacao = 'documento'
+                            SELECT * FROM document_verifications 
+                            WHERE cliente_id = ?
                             ORDER BY created_at DESC LIMIT 1
                         ");
                         $stmt->execute([$cliente['id']]);
                         $verif_doc = $stmt->fetch();
                         
-                        if ($verif_doc && $verif_doc['resultado'] === 'aprovado'):
-                            $similaridade = $verif_doc['score_similaridade'] ?? 0;
-                            $confianca = $verif_doc['confianca'] ?? 0;
+                        if ($verif_doc && isset($verif_doc['status']) && $verif_doc['status'] === 'approved'):
+                            $similaridade = $verif_doc['similarity_score'] ?? 0;
+                            $confianca = $verif_doc['confidence_score'] ?? 0;
                         ?>
                         <div class="alert alert-success mb-2 py-2 small">
                             <strong><i class="bi bi-check-circle-fill"></i> Aprovado</strong><br>
@@ -489,15 +447,15 @@ error_reporting(E_ALL);
                         <?php
                         // Busca última verificação facial
                         $stmt = $pdo->prepare("
-                            SELECT * FROM verificacoes_biometricas 
-                            WHERE cliente_id = ? AND tipo_verificacao = 'face'
+                            SELECT * FROM facial_verifications 
+                            WHERE cliente_id = ?
                             ORDER BY created_at DESC LIMIT 1
                         ");
                         $stmt->execute([$cliente['id']]);
                         $verif_face = $stmt->fetch();
                         
-                        if ($verif_face && $verif_face['resultado'] === 'aprovado'):
-                            $similaridade = $verif_face['score_similaridade'] ?? 0;
+                        if ($verif_face && isset($verif_face['status']) && $verif_face['status'] === 'approved'):
+                            $similaridade = $verif_face['similarity_score'] ?? 0;
                         ?>
                         <div class="alert alert-success mb-0 py-2 small">
                             <strong><i class="bi bi-check-circle-fill"></i> Verificado</strong><br>
@@ -707,9 +665,11 @@ error_reporting(E_ALL);
                     <?php endif; ?>
 
                     <div class="mt-3">
-                        <a href="lead_detail.php?id=<?= $lead_original['id'] ?>" class="btn btn-sm btn-outline-primary">
+                        <a href="lead_detail.php?id=<?= $lead_original['id'] ?>" class="btn btn-sm btn-outline-primary" target="_blank">
                             <i class="bi bi-box-arrow-up-right"></i> Ver Detalhes Completos do Lead
                         </a>
+                    </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -905,6 +865,102 @@ let clienteId = <?= $cliente_id ?>;
 let originalEmail = '<?= addslashes(strtolower(trim($cliente['email']))) ?>';
 let originalCpf = '<?= preg_replace('/[^0-9]/', '', $cliente['cpf'] ?? '') ?>';
 let originalNome = '<?= addslashes(trim($cliente['nome_completo'])) ?>';
+
+// Dados dos documentos do cliente
+const selfiePath = '<?= !empty($cliente['selfie_path']) ? addslashes($cliente['selfie_path']) : '' ?>';
+const documentoPath = '<?= !empty($cliente['documento_foto_path']) ? addslashes($cliente['documento_foto_path']) : '' ?>';
+
+// Função para visualizar documento em modal
+function viewDocument(type) {
+    const modalTitle = type === 'selfie' ? 'Selfie do Cliente' : 'Documento (RG/CNH)';
+    const imagePath = type === 'selfie' ? selfiePath : documentoPath;
+    
+    if (!imagePath) {
+        alert('Documento não encontrado');
+        return;
+    }
+    
+    // Criar modal de visualização
+    const modal = document.createElement('div');
+    modal.className = 'modal fade show';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">${modalTitle}</h5>
+                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove();document.body.classList.remove('modal-open')"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img src="/${imagePath}?v=${Date.now()}" class="img-fluid" alt="${modalTitle}" style="max-height: 70vh;">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove();document.body.classList.remove('modal-open')">Fechar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    document.body.classList.add('modal-open');
+}
+
+// Função para verificar ambos os documentos
+async function verifyBothDocuments() {
+    if (!selfiePath || !documentoPath) {
+        alert('É necessário ter selfie e documento enviados');
+        return;
+    }
+    
+    const confirmMsg = 'Deseja verificar a identidade do cliente comparando a selfie com o documento (RG/CNH)?';
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        // Criar FormData com ambos os documentos
+        const formData = new FormData();
+        
+        // Buscar as imagens
+        const selfieBlob = await fetch(`/${selfiePath}?v=${Date.now()}`).then(r => r.blob());
+        const documentoBlob = await fetch(`/${documentoPath}?v=${Date.now()}`).then(r => r.blob());
+        
+        formData.append('selfie', selfieBlob, 'selfie.jpg');
+        formData.append('document', documentoBlob, 'document.jpg');
+        formData.append('cliente_id', clienteId);
+        
+        // Mostrar loader
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verificando...';
+        
+        // Enviar para verificação
+        const response = await fetch('ajax_verify_document.php', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        
+        if (result.success) {
+            const score = result.similarity_score || 0;
+            const confidence = result.confidence_score || 0;
+            
+            alert(`✅ Verificação Concluída!\n\nSimilaridade: ${score.toFixed(2)}%\nConfiança: ${confidence.toFixed(2)}%\n\nStatus: ${result.status === 'approved' ? 'APROVADO' : 'REPROVADO'}`);
+            
+            // Recarregar página para mostrar novo status
+            location.reload();
+        } else {
+            alert(`❌ Erro na verificação: ${result.message || 'Erro desconhecido'}`);
+        }
+        
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao processar verificação: ' + error.message);
+    }
+}
 
 // Função para normalizar CPF (remove pontos, traços e espaços)
 function normalizeCpf(cpf) {
