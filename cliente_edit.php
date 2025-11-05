@@ -397,7 +397,7 @@ error_reporting(E_ALL);
                     <?php endif; ?>
                     
                     <?php if (!empty($cliente['selfie_path']) && !empty($cliente['documento_foto_path'])): ?>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="verifyBothDocuments()">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="verifyBothDocuments(event)">
                         <i class="bi bi-shield-check"></i> Verificar Documentos
                     </button>
                     <?php endif; ?>
@@ -413,20 +413,24 @@ error_reporting(E_ALL);
                         // Busca última verificação de documento
                         $stmt = $pdo->prepare("
                             SELECT * FROM document_verifications 
-                            WHERE cliente_id = ?
+                            WHERE cliente_id = ? AND verification_result = 'success'
                             ORDER BY created_at DESC LIMIT 1
                         ");
                         $stmt->execute([$cliente['id']]);
                         $verif_doc = $stmt->fetch();
                         
-                        if ($verif_doc && isset($verif_doc['status']) && $verif_doc['status'] === 'approved'):
-                            $similaridade = $verif_doc['similarity_score'] ?? 0;
-                            $confianca = $verif_doc['confidence_score'] ?? 0;
+                        if ($verif_doc):
+                            // Campos corretos da tabela document_verifications
+                            $face_similarity = $verif_doc['face_similarity'] ?? 0;
+                            $ocr_confidence = $verif_doc['ocr_confidence'] ?? 0;
+                            $validation_percent = $verif_doc['validation_percent'] ?? 0;
                         ?>
                         <div class="alert alert-success mb-2 py-2 small">
                             <strong><i class="bi bi-check-circle-fill"></i> Aprovado</strong><br>
                             <small>
-                                Score: <?= number_format($similaridade, 2) ?>% (<?= number_format($confianca, 2) ?>%)<br>
+                                Face: <?= number_format($face_similarity, 1) ?>% | 
+                                OCR: <?= number_format($ocr_confidence, 1) ?>% | 
+                                Validação: <?= number_format($validation_percent, 1) ?>%<br>
                                 <?= date('d/m/Y H:i', strtotime($verif_doc['created_at'])) ?>
                             </small>
                         </div>
@@ -906,7 +910,7 @@ function viewDocument(type) {
 }
 
 // Função para verificar ambos os documentos
-async function verifyBothDocuments() {
+async function verifyBothDocuments(event) {
     if (!selfiePath || !documentoPath) {
         alert('É necessário ter selfie e documento enviados');
         return;
@@ -923,15 +927,18 @@ async function verifyBothDocuments() {
         const selfieBlob = await fetch(`/${selfiePath}?v=${Date.now()}`).then(r => r.blob());
         const documentoBlob = await fetch(`/${documentoPath}?v=${Date.now()}`).then(r => r.blob());
         
-        formData.append('selfie', selfieBlob, 'selfie.jpg');
-        formData.append('document', documentoBlob, 'document.jpg');
+        // IMPORTANTE: ajax_verify_document.php espera 'document_photo' (não 'document')
+        formData.append('document_photo', documentoBlob, 'document.jpg');
         formData.append('cliente_id', clienteId);
         
         // Mostrar loader
-        const btn = event.target;
-        const originalText = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verificando...';
+        const btn = event ? event.target : null;
+        let originalText = '';
+        if (btn) {
+            originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verificando...';
+        }
         
         // Enviar para verificação
         const response = await fetch('ajax_verify_document.php', {
@@ -941,14 +948,18 @@ async function verifyBothDocuments() {
         
         const result = await response.json();
         
-        btn.disabled = false;
-        btn.innerHTML = originalText;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
         
         if (result.success) {
-            const score = result.similarity_score || 0;
-            const confidence = result.confidence_score || 0;
+            // Os campos corretos retornados pelo ajax_verify_document.php
+            const faceSimilarity = result.face_similarity || 0;
+            const ocrConfidence = result.ocr_confidence || 0;
+            const validationPercent = result.validation_percent || 0;
             
-            alert(`✅ Verificação Concluída!\n\nSimilaridade: ${score.toFixed(2)}%\nConfiança: ${confidence.toFixed(2)}%\n\nStatus: ${result.status === 'approved' ? 'APROVADO' : 'REPROVADO'}`);
+            alert(`✅ Verificação Concluída!\n\nSimilaridade Facial: ${faceSimilarity.toFixed(2)}%\nConfiança OCR: ${ocrConfidence.toFixed(2)}%\nValidação: ${validationPercent.toFixed(2)}%\n\nStatus: APROVADO`);
             
             // Recarregar página para mostrar novo status
             location.reload();
