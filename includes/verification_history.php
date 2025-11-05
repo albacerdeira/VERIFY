@@ -103,33 +103,41 @@ if ($stmt_last->errorCode() !== '00000') {
 }
 ?>
 
-<!-- Status Fixo de Verificação -->
-<div class="card mb-3">
-    <div class="card-header bg-primary text-white">
-        <h5 class="mb-0"><i class="bi bi-shield-check"></i> Status de Verificação</h5>
-    </div>
-    <div class="card-body">
-        <div class="row">
-            <!-- Verificação Documental -->
-            <div class="col-md-6">
-                <h6><i class="bi bi-file-earmark-text"></i> Verificação Documental</h6>
-                <?php if (!empty($last_verification['status_doc'])): ?>
-                    <?php 
-                    $max_score = $last_verification['max_score_doc'] ?? 12;
-                    $score_percent = $max_score > 0 ? ($last_verification['score_doc'] / $max_score) * 100 : 0;
-                    ?>
-                    <?php if ($last_verification['status_doc'] === 'success'): ?>
-                        <span class="badge bg-success">
-                            <i class="bi bi-check-circle"></i> Verificado
-                        </span>
-                        <small class="d-block text-muted mt-1">
-                            Score: <?php echo number_format($last_verification['score_doc'], 1); ?>/<?php echo number_format($max_score, 1); ?>
-                            (<?php echo number_format($score_percent, 1); ?>%)
-                        </small>
-                        <small class="d-block text-muted">
-                            <?php echo date('d/m/Y H:i', strtotime($last_verification['ultima_doc'])); ?>
-                        </small>
-                    <?php else: ?>
+<!-- Histórico de Verificações em Accordion -->
+<div class="accordion" id="accordionHistoricoVerificacoes">
+    <div class="accordion-item border-0 shadow-sm">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseHistorico" aria-expanded="false">
+                <i class="bi bi-clock-history me-2"></i> 
+                <strong>Histórico de Verificações</strong>
+                <span class="badge bg-light text-dark ms-2"><?= count($verification_history) ?></span>
+            </button>
+        </h2>
+        <div id="collapseHistorico" class="accordion-collapse collapse" data-bs-parent="#accordionHistoricoVerificacoes">
+            <div class="accordion-body">
+                <!-- Resumo das Verificações -->
+                <div class="row mb-4">
+                    <!-- Verificação Documental -->
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded">
+                            <h6 class="mb-2"><i class="bi bi-file-earmark-text"></i> Verificação Documental</h6>
+                            <?php if (!empty($last_verification['status_doc'])): ?>
+                                <?php 
+                                $max_score = $last_verification['max_score_doc'] ?? 12;
+                                $score_percent = $max_score > 0 ? ($last_verification['score_doc'] / $max_score) * 100 : 0;
+                                ?>
+                                <?php if ($last_verification['status_doc'] === 'success'): ?>
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Verificado
+                                    </span>
+                                    <small class="d-block text-muted mt-1">
+                                        Score: <?= number_format($last_verification['score_doc'], 1) ?>/<?= number_format($max_score, 1) ?>
+                                        (<?= number_format($score_percent, 1) ?>%)
+                                    </small>
+                                    <small class="d-block text-muted">
+                                        <?= date('d/m/Y H:i', strtotime($last_verification['ultima_doc'])) ?>
+                                    </small>
+                                <?php else: ?>
                         <span class="badge bg-danger">
                             <i class="bi bi-x-circle"></i> Falhou
                         </span>
@@ -325,6 +333,8 @@ if ($stmt_last->errorCode() !== '00000') {
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
+            </div>
+        </div>
     </div>
 </div>
 

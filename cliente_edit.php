@@ -385,49 +385,133 @@ error_reporting(E_ALL);
             </form>
         </div>
 
+        <!-- COLUNA DIREITA: Documentos e Infos -->
         <div class="col-md-5">
             <div class="p-3 border rounded bg-light">
-                <h4 class="mb-3 border-bottom pb-2">Documentos e Infos</h4>
+                <!-- Header com Status -->
+                <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                    <h4 class="mb-0">Documentos e Infos</h4>
+                    <?php
+                    $status_map = ['ativo' => 'success', 'inativo' => 'secondary', 'pendente' => 'warning'];
+                    $status_color = $status_map[$cliente['status']] ?? 'secondary';
+                    $status_icon = ($cliente['status'] === 'ativo') ? '🔓' : '🔒';
+                    ?>
+                    <span class="badge bg-<?= $status_color ?> fs-6"><?= $status_icon ?> <?= ucfirst($cliente['status']) ?></span>
+                </div>
                 
+                <!-- Info Básica -->
                 <div class="mb-3">
-                    <p class="mb-1"><strong>ID do Cliente:</strong> #<?= htmlspecialchars($cliente['id']) ?></p>
-                    <p class="mb-1"><strong>Data de Cadastro:</strong> <?= htmlspecialchars(date('d/m/Y H:i', strtotime($cliente['created_at']))) ?></p>
-                    <p><strong>Última Atualização:</strong> <?= htmlspecialchars(date('d/m/Y H:i', strtotime($cliente['updated_at']))) ?></p>
+                    <p class="mb-1"><small class="text-muted">ID do Cliente:</small> <strong>#<?= htmlspecialchars($cliente['id']) ?></strong></p>
+                    <p class="mb-1"><small class="text-muted">Data de Cadastro:</small> <?= htmlspecialchars(date('d/m/Y H:i', strtotime($cliente['created_at']))) ?></p>
+                    <p class="mb-0"><small class="text-muted">Última Atualização:</small> <?= htmlspecialchars(date('d/m/Y H:i', strtotime($cliente['updated_at']))) ?></p>
                 </div>
 
-                <div class="text-center">
-                    <h5 class="mb-2">Selfie Enviada</h5>
+                <!-- Selfie Enviada -->
+                <div class="text-center mb-3">
+                    <h6 class="text-muted mb-2">Selfie Enviada</h6>
                     <?php
                     if (!empty($cliente['selfie_path'])) {
-                        $path_servidor = htmlspecialchars($cliente['selfie_path']); // ex: "uploads/selfies/foto.jpg"
+                        $path_servidor = htmlspecialchars($cliente['selfie_path']);
                         $ext = strtolower(pathinfo($path_servidor, PATHINFO_EXTENSION));
-
-                        // --- CORREÇÃO CACHE BUSTING APLICADA ---
-                        // 1. Gera o cache-buster (timestamp) SE o arquivo existir
                         $cache_buster = file_exists($path_servidor) ? '?v=' . filemtime($path_servidor) : '';
-                        // 2. Cria o path web absoluto (com / no início) e adiciona o cache-buster
                         $path_web = '/' . ltrim($path_servidor, '/') . $cache_buster;
-                        // --- FIM DA CORREÇÃO ---
 
-                        // 3. Verifica a existência do arquivo no servidor (sem o cache-buster)
                         if (file_exists($path_servidor)) { 
                             if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
-                                // 4. Usa o $path_web (com cache-buster) no HTML
-                                echo '<img src="' . $path_web . '" alt="Selfie do Cliente" class="img-fluid rounded border" style="max-height: 300px;">';
+                                echo '<img src="' . $path_web . '" alt="Selfie do Cliente" class="img-fluid rounded border shadow-sm" style="max-height: 250px; max-width: 100%;">';
                             } elseif ($ext == 'pdf') {
-                                echo '<div class="alert alert-info text-center">';
-                                echo '<a href="' . $path_web . '" target="_blank" class="alert-link">Visualizar PDF da Selfie</a>';
+                                echo '<div class="alert alert-info text-center mb-0">';
+                                echo '<a href="' . $path_web . '" target="_blank" class="alert-link"><i class="bi bi-file-pdf"></i> Visualizar PDF da Selfie</a>';
                                 echo '</div>';
                             } else {
-                                echo '<p class="text-muted">Arquivo de selfie disponível, mas formato não visualizável: <a href="' . $path_web . '" target="_blank">' . basename($path_servidor) . '</a></p>';
+                                echo '<p class="text-muted mb-0"><a href="' . $path_web . '" target="_blank"><i class="bi bi-paperclip"></i> ' . basename($path_servidor) . '</a></p>';
                             }
                         } else {
-                             echo '<p class="text-danger">Selfie registrada, mas o arquivo (' . $path_servidor . ') não foi encontrado no servidor.</p>';
+                             echo '<div class="alert alert-danger mb-0 small"><i class="bi bi-exclamation-triangle"></i> Arquivo não encontrado</div>';
                         }
                     } else {
-                        echo '<p class="text-muted">Nenhuma selfie foi enviada por este cliente.</p>';
+                        echo '<div class="alert alert-warning mb-0 small"><i class="bi bi-camera-fill"></i> Nenhuma selfie enviada</div>';
                     }
                     ?>
+                </div>
+
+                <!-- Botões de Verificação -->
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center mb-3">
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalVerifyFace">
+                        <i class="bi bi-person-badge"></i> Selfie
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalVerifyDocumentDirect">
+                        <i class="bi bi-file-text"></i> documento
+                    </button>
+                </div>
+
+                <!-- Card de Verificação Documental -->
+                <div class="card mb-3 border-0 shadow-sm">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0"><i class="bi bi-shield-check"></i> Verificação Documental</h6>
+                    </div>
+                    <div class="card-body p-2">
+                        <?php
+                        // Busca última verificação de documento
+                        $stmt = $pdo->prepare("
+                            SELECT * FROM verificacoes_biometricas 
+                            WHERE cliente_id = ? AND tipo_verificacao = 'documento'
+                            ORDER BY created_at DESC LIMIT 1
+                        ");
+                        $stmt->execute([$cliente['id']]);
+                        $verif_doc = $stmt->fetch();
+                        
+                        if ($verif_doc && $verif_doc['resultado'] === 'aprovado'):
+                            $similaridade = $verif_doc['score_similaridade'] ?? 0;
+                            $confianca = $verif_doc['confianca'] ?? 0;
+                        ?>
+                        <div class="alert alert-success mb-2 py-2 small">
+                            <strong><i class="bi bi-check-circle-fill"></i> Aprovado</strong><br>
+                            <small>
+                                Score: <?= number_format($similaridade, 2) ?>% (<?= number_format($confianca, 2) ?>%)<br>
+                                <?= date('d/m/Y H:i', strtotime($verif_doc['created_at'])) ?>
+                            </small>
+                        </div>
+                        <?php else: ?>
+                        <div class="alert alert-warning mb-0 py-2 small">
+                            <i class="bi bi-exclamation-triangle"></i> Não verificado
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Card de Verificação Facial -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white border-0">
+                        <h6 class="mb-0"><i class="bi bi-person-check"></i> Verificação Facial</h6>
+                    </div>
+                    <div class="card-body p-2">
+                        <?php
+                        // Busca última verificação facial
+                        $stmt = $pdo->prepare("
+                            SELECT * FROM verificacoes_biometricas 
+                            WHERE cliente_id = ? AND tipo_verificacao = 'face'
+                            ORDER BY created_at DESC LIMIT 1
+                        ");
+                        $stmt->execute([$cliente['id']]);
+                        $verif_face = $stmt->fetch();
+                        
+                        if ($verif_face && $verif_face['resultado'] === 'aprovado'):
+                            $similaridade = $verif_face['score_similaridade'] ?? 0;
+                        ?>
+                        <div class="alert alert-success mb-0 py-2 small">
+                            <strong><i class="bi bi-check-circle-fill"></i> Verificado</strong><br>
+                            <small>
+                                Similaridade: <?= number_format($similaridade, 2) ?>%<br>
+                                <?= date('d/m/Y H:i', strtotime($verif_face['created_at'])) ?>
+                            </small>
+                        </div>
+                        <?php else: ?>
+                        <div class="alert alert-warning mb-0 py-2 small">
+                            <i class="bi bi-exclamation-triangle"></i> Não verificado
+                        </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -437,74 +521,71 @@ error_reporting(E_ALL);
     <!-- Empresas KYC Vinculadas -->
     <div class="row mt-4">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">
-                        <i class="bi bi-building-check"></i> Empresas Cadastradas (KYC)
-                        <span class="badge bg-light text-success ms-2"><?= count($empresas_kyc) ?></span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <?php foreach ($empresas_kyc as $index => $empresa): 
-                        // Define cor do status
-                        $status_colors = [
-                            'aprovado' => 'bg-success',
-                            'pendente' => 'bg-warning text-dark',
-                            'em_analise' => 'bg-info',
-                            'reprovado' => 'bg-danger',
-                            'aguardando_documentos' => 'bg-secondary'
-                        ];
-                        $status_badge = $status_colors[$empresa['status']] ?? 'bg-light text-dark';
-                        
-                        // Nome da empresa master (whitelabel)
-                        $empresa_master = $empresa['empresa_master_nome'] ?: 'Verify KYC';
-                    ?>
-                    <?php if ($index > 0): ?><hr class="my-3"><?php endif; ?>
-                    <div class="empresa-kyc-item">
-                        <div class="row align-items-center mb-3">
-                            <div class="col-md-6">
-                                <h5 class="mb-1">
-                                    <i class="bi bi-building"></i> 
-                                    <?= htmlspecialchars($empresa['razao_social']) ?>
-                                </h5>
-                                <p class="mb-0 text-muted">
-                                    <i class="bi bi-hash"></i> CNPJ: 
-                                    <code><?= htmlspecialchars($empresa['cnpj']) ?></code>
-                                </p>
+            <div class="accordion" id="accordionEmpresasKYC">
+                <div class="accordion-item border-0 shadow-sm">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button bg-success text-white" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEmpresas" aria-expanded="true">
+                            <i class="bi bi-building-check me-2"></i> 
+                            <strong>Empresas Cadastradas (KYC)</strong>
+                            <span class="badge bg-light text-success ms-2"><?= count($empresas_kyc) ?></span>
+                        </button>
+                    </h2>
+                    <div id="collapseEmpresas" class="accordion-collapse collapse show" data-bs-parent="#accordionEmpresasKYC">
+                        <div class="accordion-body">
+                            <?php foreach ($empresas_kyc as $index => $empresa): 
+                                $status_colors = [
+                                    'aprovado' => 'bg-success',
+                                    'novo_registro' => 'bg-primary',
+                                    'pendente' => 'bg-warning text-dark',
+                                    'em_analise' => 'bg-info',
+                                    'reprovado' => 'bg-danger',
+                                    'aguardando_documentos' => 'bg-secondary'
+                                ];
+                                $status_badge = $status_colors[$empresa['status']] ?? 'bg-light text-dark';
+                                $empresa_master = $empresa['empresa_master_nome'] ?: 'Verify KYC';
+                            ?>
+                            <?php if ($index > 0): ?><hr class="my-3"><?php endif; ?>
+                            <div class="empresa-kyc-item">
+                                <div class="row align-items-center mb-2">
+                                    <div class="col-md-6">
+                                        <h6 class="mb-1">
+                                            <i class="bi bi-building"></i> 
+                                            <?= htmlspecialchars($empresa['razao_social']) ?>
+                                        </h6>
+                                        <p class="mb-0 small text-muted">
+                                            <i class="bi bi-hash"></i> CNPJ: <code><?= htmlspecialchars($empresa['cnpj']) ?></code>
+                                        </p>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="text-muted small d-block">Status KYC</label>
+                                        <span class="badge <?= $status_badge ?>">
+                                            <?= ucfirst(str_replace('_', ' ', $empresa['status'])) ?>
+                                        </span>
+                                    </div>
+                                    <div class="col-md-3 text-end">
+                                        <a href="kyc_evaluate.php?id=<?= $empresa['id'] ?>" class="btn btn-sm btn-primary" target="_blank">
+                                            <i class="bi bi-eye"></i> Ver KYC
+                                        </a>
+                                    </div>
+                                </div>
+                                
+                                <div class="row small">
+                                    <div class="col-md-4">
+                                        <span class="text-muted">Cadastrado:</span> <?= date('d/m/Y H:i', strtotime($empresa['data_criacao'])) ?>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <span class="text-muted">Atualizado:</span> <?= date('d/m/Y H:i', strtotime($empresa['data_atualizacao'])) ?>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <span class="badge bg-light text-dark border">
+                                            <i class="bi bi-shield-check"></i> <?= htmlspecialchars($empresa_master) ?>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-3">
-                                <label class="text-muted small d-block">Status KYC</label>
-                                <span class="badge <?= $status_badge ?> fs-6">
-                                    <?= ucfirst(str_replace('_', ' ', $empresa['status'])) ?>
-                                </span>
-                            </div>
-                            <div class="col-md-3 text-end">
-                                <a href="kyc_evaluate.php?id=<?= $empresa['id'] ?>" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-eye"></i> Ver KYC
-                                </a>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-4">
-                                <label class="text-muted small">Cadastrado em</label>
-                                <p class="mb-0"><?= date('d/m/Y H:i', strtotime($empresa['data_criacao'])) ?></p>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="text-muted small">Última Atualização</label>
-                                <p class="mb-0"><?= date('d/m/Y H:i', strtotime($empresa['data_atualizacao'])) ?></p>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="text-muted small">Plataforma</label>
-                                <p class="mb-0">
-                                    <span class="badge bg-light text-dark border">
-                                        <i class="bi bi-shield-check"></i> <?= htmlspecialchars($empresa_master) ?>
-                                    </span>
-                                </p>
-                            </div>
+                            <?php endforeach; ?>
                         </div>
                     </div>
-                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
@@ -513,16 +594,19 @@ error_reporting(E_ALL);
 
     <?php if ($lead_original): ?>
     <!-- Histórico do Lead Original -->
-    <div class="row mt-4">
+    <div class="row mt-3">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="bi bi-funnel-fill"></i> Lead Original
-                        <span class="badge bg-light text-primary ms-2">#<?= $lead_original['id'] ?></span>
-                    </h5>
-                </div>
-                <div class="card-body">
+            <div class="accordion" id="accordionLeadOriginal">
+                <div class="accordion-item border-0 shadow-sm">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed bg-primary text-white" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLead" aria-expanded="false">
+                            <i class="bi bi-funnel-fill me-2"></i> 
+                            <strong>Lead Original</strong>
+                            <span class="badge bg-light text-primary ms-2">#<?= $lead_original['id'] ?></span>
+                        </button>
+                    </h2>
+                    <div id="collapseLead" class="accordion-collapse collapse" data-bs-parent="#accordionLeadOriginal">
+                        <div class="accordion-body">
                     <div class="row mb-4">
                         <div class="col-md-3">
                             <label class="text-muted small">Status do Lead</label>
