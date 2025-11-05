@@ -30,7 +30,7 @@ try {
     }
 
     // Verificação de segurança para Admin e Analista
-    if (($is_admin || $is_analista) && $cliente['id_empresa_master'] != $user_empresa_id) {
+    if (($is_admin || $is_analista) && (int)$cliente['id_empresa_master'] !== (int)$user_empresa_id) {
         throw new Exception("Você não tem permissão para editar este cliente.");
     }
 
@@ -205,20 +205,101 @@ error_reporting(E_ALL);
             <form method="POST">
                 <h4 class="mb-3 border-bottom pb-2">Dados Cadastrais</h4>
                 
+                <!-- IDENTIFICAÇÃO BÁSICA -->
+                <h5 class="mt-3 mb-2 text-primary" style="font-size: 1.05rem;">📋 Identificação Básica</h5>
+                
                 <div class="mb-3">
                     <label for="nome_completo" class="form-label">Nome Completo</label>
                     <input type="text" class="form-control" id="nome_completo" name="nome_completo" value="<?= htmlspecialchars($cliente['nome_completo']) ?>" required>
                 </div>
 
-                <div class="mb-3">
-                    <label for="cpf" class="form-label">CPF</label>
-                    <input type="text" class="form-control" id="cpf" name="cpf" value="<?= htmlspecialchars($cliente['cpf'] ?? '') ?>">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="cpf" class="form-label">CPF</label>
+                        <input type="text" class="form-control" id="cpf" name="cpf" value="<?= htmlspecialchars($cliente['cpf'] ?? '') ?>">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="rg" class="form-label">RG</label>
+                        <input type="text" class="form-control" id="rg" name="rg" value="<?= htmlspecialchars($cliente['rg'] ?? '') ?>" readonly>
+                        <small class="text-muted">Extraído automaticamente do documento</small>
+                    </div>
                 </div>
 
+                <div class="mb-3">
+                    <label for="data_nascimento" class="form-label">Data de Nascimento</label>
+                    <input type="date" class="form-control" id="data_nascimento" name="data_nascimento" value="<?= htmlspecialchars($cliente['data_nascimento'] ?? '') ?>">
+                </div>
+
+                <!-- CONTATO -->
+                <h5 class="mt-4 mb-2 text-primary" style="font-size: 1.05rem;">📞 Contato</h5>
+                
                 <div class="mb-3">
                     <label for="email" class="form-label">Email</label>
                     <input type="email" class="form-control" id="email" name="email" value="<?= htmlspecialchars($cliente['email']) ?>" required>
                 </div>
+
+                <div class="mb-3">
+                    <label for="telefone" class="form-label">Telefone / WhatsApp</label>
+                    <input type="text" class="form-control" id="telefone" name="telefone" value="<?= htmlspecialchars($cliente['telefone'] ?? '') ?>" placeholder="(11) 98765-4321">
+                </div>
+
+                <!-- FILIAÇÃO -->
+                <h5 class="mt-4 mb-2 text-primary" style="font-size: 1.05rem;">👨‍👩‍👦 Filiação</h5>
+                
+                <div class="mb-3">
+                    <label for="nome_mae" class="form-label">Nome da Mãe</label>
+                    <input type="text" class="form-control" id="nome_mae" name="nome_mae" value="<?= htmlspecialchars($cliente['nome_mae'] ?? '') ?>">
+                </div>
+
+                <div class="mb-3">
+                    <label for="nome_pai" class="form-label">Nome do Pai</label>
+                    <input type="text" class="form-control" id="nome_pai" name="nome_pai" value="<?= htmlspecialchars($cliente['nome_pai'] ?? '') ?>">
+                </div>
+
+                <!-- ENDEREÇO -->
+                <h5 class="mt-4 mb-2 text-primary" style="font-size: 1.05rem;">🏠 Endereço</h5>
+                
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="endereco_cep" class="form-label">CEP</label>
+                        <input type="text" class="form-control" id="endereco_cep" name="endereco_cep" value="<?= htmlspecialchars($cliente['endereco_cep'] ?? '') ?>" placeholder="12345-678">
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <label for="endereco_rua" class="form-label">Logradouro</label>
+                        <input type="text" class="form-control" id="endereco_rua" name="endereco_rua" value="<?= htmlspecialchars($cliente['endereco_rua'] ?? '') ?>">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label for="endereco_numero" class="form-label">Número</label>
+                        <input type="text" class="form-control" id="endereco_numero" name="endereco_numero" value="<?= htmlspecialchars($cliente['endereco_numero'] ?? '') ?>">
+                    </div>
+                    <div class="col-md-9 mb-3">
+                        <label for="endereco_complemento" class="form-label">Complemento</label>
+                        <input type="text" class="form-control" id="endereco_complemento" name="endereco_complemento" value="<?= htmlspecialchars($cliente['endereco_complemento'] ?? '') ?>" placeholder="Apto, Bloco, etc.">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-5 mb-3">
+                        <label for="endereco_bairro" class="form-label">Bairro</label>
+                        <input type="text" class="form-control" id="endereco_bairro" name="endereco_bairro" value="<?= htmlspecialchars($cliente['endereco_bairro'] ?? '') ?>">
+                    </div>
+                    <div class="col-md-5 mb-3">
+                        <label for="endereco_cidade" class="form-label">Cidade</label>
+                        <input type="text" class="form-control" id="endereco_cidade" name="endereco_cidade" value="<?= htmlspecialchars($cliente['endereco_cidade'] ?? '') ?>">
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="endereco_estado" class="form-label">UF</label>
+                        <input type="text" class="form-control" id="endereco_estado" name="endereco_estado" value="<?= htmlspecialchars($cliente['endereco_estado'] ?? '') ?>" maxlength="2" placeholder="SP">
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- STATUS E SENHA -->
+                <h5 class="mb-2 text-primary" style="font-size: 1.05rem;">🔒 Segurança</h5>
 
                 <!-- Campo Status da Conta (fora do bloco de dados sensíveis) -->
                 <div class="mb-3 border rounded p-3 bg-light">
@@ -245,15 +326,50 @@ error_reporting(E_ALL);
                     <i class="bi bi-shield-exclamation"></i>
                     <strong>Atenção:</strong> Se você alterar <u>Nome</u>, <u>Email</u>, <u>CPF</u> ou <u>Senha</u>, será necessário verificação de identidade.<br>
                     <small class="text-muted">Alteração de <strong>Status da Conta</strong> <u>não exige</u> verificação de identidade.</small>
-                    <div class="mt-3">
-                        <p class="mb-2 fw-bold">Método de verificação:</p>
-                        <button type="button" class="btn btn-primary w-100" id="btn-open-doc-modal">
-                            <i class="bi bi-file-earmark-person"></i> Documento com Foto (RG ou CNH)
-                        </button>
-                        <small class="text-muted d-block mt-2">
-                            <i class="bi bi-info-circle"></i> 
-                            Envie uma foto do seu documento (RG ou CNH). Validaremos automaticamente nome, CPF, RG e foto.
-                        </small>
+                    
+                    <hr class="my-3">
+                    
+                    <div class="row g-2">
+                        <!-- Área de Upload de Documento -->
+                        <div class="col-12">
+                            <h6 class="mb-2"><i class="bi bi-file-earmark-person"></i> Verificação por Documento (RG ou CNH)</h6>
+                            <p class="small text-muted mb-2">Envie uma foto do seu RG ou CNH. Validaremos automaticamente nome, CPF, RG e foto.</p>
+                            
+                            <!-- Status da verificação por documento -->
+                            <div id="doc-verification-status" class="alert d-none mb-2" role="alert"></div>
+                            
+                            <!-- Botão de upload -->
+                            <div class="d-grid">
+                                <label for="document-upload-direct" class="btn btn-primary">
+                                    <i class="bi bi-upload"></i> Selecionar Foto do Documento
+                                </label>
+                                <input type="file" id="document-upload-direct" accept="image/jpeg,image/jpg,image/png" style="display:none;" onchange="handleDocumentUploadDirect(event)">
+                            </div>
+                            
+                            <!-- Preview do documento -->
+                            <div id="doc-preview-direct" class="mt-3" style="display:none;">
+                                <img id="doc-image-preview" src="" alt="Preview" class="img-fluid border rounded" style="max-height: 300px;">
+                                <div class="mt-2">
+                                    <button type="button" class="btn btn-success btn-sm" onclick="verifyDocumentDirect()">
+                                        <i class="bi bi-shield-check"></i> Validar Documento
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="resetDocumentDirect()">
+                                        <i class="bi bi-x-circle"></i> Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Loader -->
+                            <div id="doc-verification-loader-direct" class="text-center mt-3" style="display:none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Verificando...</span>
+                                </div>
+                                <p class="mt-2 small">Validando documento com OCR e comparação facial...</p>
+                            </div>
+                            
+                            <!-- Resultado da validação -->
+                            <div id="doc-validation-results-direct" class="mt-3" style="display:none;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -331,14 +447,14 @@ error_reporting(E_ALL);
                 <div class="card-body">
                     <?php foreach ($empresas_kyc as $index => $empresa): 
                         // Define cor do status
-                        $status_badge = match($empresa['status']) {
+                        $status_colors = [
                             'aprovado' => 'bg-success',
                             'pendente' => 'bg-warning text-dark',
                             'em_analise' => 'bg-info',
                             'reprovado' => 'bg-danger',
-                            'aguardando_documentos' => 'bg-secondary',
-                            default => 'bg-light text-dark'
-                        };
+                            'aguardando_documentos' => 'bg-secondary'
+                        ];
+                        $status_badge = $status_colors[$empresa['status']] ?? 'bg-light text-dark';
                         
                         // Nome da empresa master (whitelabel)
                         $empresa_master = $empresa['empresa_master_nome'] ?: 'Verify KYC';
@@ -412,14 +528,14 @@ error_reporting(E_ALL);
                             <label class="text-muted small">Status do Lead</label>
                             <p class="mb-0">
                                 <?php
-                                $badge_class = match($lead_original['status']) {
+                                $badge_classes = [
                                     'novo' => 'bg-primary',
                                     'contatado' => 'bg-info',
                                     'qualificado' => 'bg-warning text-dark',
                                     'convertido' => 'bg-success',
-                                    'perdido' => 'bg-secondary',
-                                    default => 'bg-light text-dark'
-                                };
+                                    'perdido' => 'bg-secondary'
+                                ];
+                                $badge_class = $badge_classes[$lead_original['status']] ?? 'bg-light text-dark';
                                 ?>
                                 <span class="badge <?= $badge_class ?>">
                                     <?= ucfirst($lead_original['status']) ?>
@@ -1167,10 +1283,277 @@ function showStatus(type, message) {
 }
 
 // ============================================
-// FUNÇÕES PARA VERIFICAÇÃO POR DOCUMENTO
+// FUNÇÕES PARA VERIFICAÇÃO POR DOCUMENTO (DIRETO, SEM MODAL)
 // ============================================
 
-let docStream = null;
+let docCanvasDirect = null;
+
+function handleDocumentUploadDirect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Valida tipo de arquivo
+    if (!file.type.match('image/(jpeg|jpg|png)')) {
+        alert('Por favor, envie apenas imagens JPG ou PNG.');
+        event.target.value = '';
+        return;
+    }
+    
+    // Valida tamanho (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Imagem muito grande. Tamanho máximo: 10MB');
+        event.target.value = '';
+        return;
+    }
+    
+    // Lê o arquivo e exibe preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        // Cria canvas se não existir
+        if (!docCanvasDirect) {
+            docCanvasDirect = document.createElement('canvas');
+        }
+        
+        const preview = document.getElementById('doc-image-preview');
+        const img = new Image();
+        
+        img.onload = function() {
+            // Desenha imagem no canvas
+            docCanvasDirect.width = img.width;
+            docCanvasDirect.height = img.height;
+            const ctx = docCanvasDirect.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Mostra preview
+            preview.src = e.target.result;
+            document.getElementById('doc-preview-direct').style.display = 'block';
+        };
+        
+        img.src = e.target.result;
+    };
+    
+    reader.readAsDataURL(file);
+    event.target.value = ''; // Limpa input
+}
+
+function resetDocumentDirect() {
+    document.getElementById('doc-preview-direct').style.display = 'none';
+    document.getElementById('doc-verification-status').classList.add('d-none');
+    document.getElementById('doc-validation-results-direct').style.display = 'none';
+    document.getElementById('document-upload-direct').value = '';
+    docCanvasDirect = null;
+}
+
+function verifyDocumentDirect() {
+    if (!docCanvasDirect) {
+        alert('Nenhum documento foi carregado!');
+        return;
+    }
+    
+    const loader = document.getElementById('doc-verification-loader-direct');
+    const statusDiv = document.getElementById('doc-verification-status');
+    
+    loader.style.display = 'block';
+    document.getElementById('doc-preview-direct').style.display = 'none';
+    statusDiv.classList.add('d-none');
+    
+    docCanvasDirect.toBlob(function(blob) {
+        const formData = new FormData();
+        formData.append('document_photo', blob, 'document.jpg');
+        formData.append('cliente_id', clienteId);
+        
+        fetch('ajax_verify_document.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            
+            // SEMPRE tenta parsear como JSON, mesmo em caso de erro HTTP
+            return response.text().then(text => {
+                console.log('Response text:', text);
+                
+                try {
+                    const data = JSON.parse(text);
+                    return { data, status: response.status };
+                } catch (e) {
+                    console.error('Erro ao parsear JSON:', e);
+                    throw new Error('Resposta inválida do servidor (status ' + response.status + ')');
+                }
+            });
+        })
+        .then(({ data, status }) => {
+            loader.style.display = 'none';
+            
+            // DEBUG: Mostra todos os dados retornados
+            console.log('=== DADOS RETORNADOS ===');
+            console.log('Success:', data.success);
+            console.log('Message:', data.message);
+            console.log('OCR Confidence:', data.ocr_confidence);
+            console.log('Face Similarity:', data.face_similarity);
+            console.log('Validation Percent:', data.validation_percent);
+            console.log('Validations:', data.validations);
+            console.log('Extracted Data:', data.extracted_data);
+            
+            if (data.success) {
+                // Salva token no campo oculto
+                document.getElementById('verification_token').value = data.verification_token;
+                
+                // Mostra sucesso
+                showDocStatusDirect('success', '<strong>✅ Verificação Aprovada!</strong><br>' + data.message);
+                
+                // Exibe tabela de validação
+                if (data.validations) {
+                    displayValidationResultsDirect(data);
+                }
+                
+                // Mostra badge de verificado
+                const verifiedBadge = document.getElementById('face-verified-badge');
+                
+                if (verifiedBadge) {
+                    verifiedBadge.classList.remove('d-none');
+                }
+                
+            } else {
+                // FALHA NA VALIDAÇÃO (HTTP 400 com JSON)
+                let errorHtml = '<strong>❌ DADOS NÃO CONFEREM!</strong><br>';
+                errorHtml += '<p class="mb-2">' + (data.message || 'Erro desconhecido') + '</p>';
+                
+                // Barra de progresso do score
+                if (data.validation_percent !== undefined) {
+                    const scoreColor = data.validation_percent >= 75 ? 'success' : 
+                                     data.validation_percent >= 50 ? 'warning' : 'danger';
+                    errorHtml += '<div class="mt-3">';
+                    errorHtml += '<small class="text-muted d-block mb-1">Score de Validação:</small>';
+                    errorHtml += '<div class="progress" style="height: 25px;">';
+                    errorHtml += '<div class="progress-bar bg-' + scoreColor + '" style="width: ' + data.validation_percent + '%">';
+                    errorHtml += '<strong>' + data.validation_percent + '%</strong>';
+                    errorHtml += '</div></div>';
+                    errorHtml += '</div>';
+                }
+                
+                showDocStatusDirect('error', errorHtml);
+                
+                // Exibe tabela de validação mesmo quando falha (IMPORTANTE!)
+                if (data.validations && Object.keys(data.validations).length > 0) {
+                    displayValidationResultsDirect(data);
+                }
+                
+                document.getElementById('doc-preview-direct').style.display = 'block';
+            }
+        })
+        .catch(error => {
+            loader.style.display = 'none';
+            console.error('Erro capturado:', error);
+            showDocStatusDirect('error', 'Erro na requisição: ' + error.message);
+            document.getElementById('doc-preview-direct').style.display = 'block';
+        });
+    }, 'image/jpeg', 0.95);
+}
+
+function showDocStatusDirect(type, message) {
+    const statusDiv = document.getElementById('doc-verification-status');
+    
+    if (!statusDiv) {
+        console.error('Elemento doc-verification-status não encontrado');
+        return;
+    }
+    
+    statusDiv.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-info');
+    
+    if (type === 'success') {
+        statusDiv.classList.add('alert-success');
+        statusDiv.innerHTML = '<i class="bi bi-check-circle"></i> ' + message;
+    } else if (type === 'error') {
+        statusDiv.classList.add('alert-danger');
+        statusDiv.innerHTML = '<i class="bi bi-x-circle"></i> ' + message;
+    } else {
+        statusDiv.classList.add('alert-info');
+        statusDiv.innerHTML = '<i class="bi bi-info-circle"></i> ' + message;
+    }
+}
+
+function displayValidationResultsDirect(data) {
+    const resultsDiv = document.getElementById('doc-validation-results-direct');
+    
+    // Usa a mesma lógica de displayValidationResults mas em outro container
+    let passed = 0;
+    let failed = 0;
+    for (const validation of Object.values(data.validations)) {
+        if (validation.match === true) passed++;
+        else if (validation.match === false) failed++;
+    }
+    
+    let html = '<div class="alert alert-light border">';
+    
+    html += '<div class="d-flex justify-content-between align-items-center mb-3">';
+    html += '<h6 class="mb-0"><i class="bi bi-clipboard-data"></i> Resultado da Validação</h6>';
+    html += '<div>';
+    if (passed > 0) {
+        html += '<span class="badge bg-success me-2"><i class="bi bi-check-circle"></i> ' + passed + ' Correto(s)</span>';
+    }
+    if (failed > 0) {
+        html += '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> ' + failed + ' Divergente(s)</span>';
+    }
+    html += '</div></div>';
+    
+    html += '<div class="row mb-3">';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">OCR Confiança</small>';
+    html += '<strong class="fs-5">' + (data.ocr_confidence || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">Similaridade Facial</small>';
+    html += '<strong class="fs-5">' + (data.face_similarity || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">Score Total</small>';
+    html += '<strong class="fs-5">' + (data.validation_percent || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '</div>';
+    
+    html += '<div class="table-responsive">';
+    html += '<table class="table table-sm table-bordered mb-0">';
+    html += '<thead class="table-light">';
+    html += '<tr><th width="20%">Campo</th><th width="35%">Extraído</th><th width="35%">Cadastro</th><th width="10%" class="text-center">Status</th></tr>';
+    html += '</thead><tbody>';
+    
+    for (const [field, validation] of Object.entries(data.validations)) {
+        const fieldName = field.replace(/_/g, ' ').toUpperCase();
+        let statusIcon, rowClass;
+        
+        if (validation.match === true) {
+            statusIcon = '<i class="bi bi-check-circle-fill text-success fs-5"></i>';
+            rowClass = 'table-success';
+        } else if (validation.match === false) {
+            statusIcon = '<i class="bi bi-x-circle-fill text-danger fs-5"></i>';
+            rowClass = 'table-danger';
+        } else {
+            statusIcon = '<i class="bi bi-dash-circle text-muted fs-5"></i>';
+            rowClass = '';
+        }
+        
+        html += '<tr class="' + rowClass + '">';
+        html += '<td class="fw-bold">' + fieldName + '</td>';
+        html += '<td><code>' + (validation.extracted || '<span class="text-muted">-</span>') + '</code></td>';
+        html += '<td><code>' + (validation.database || '<span class="text-muted">-</span>') + '</code></td>';
+        html += '<td class="text-center">' + statusIcon;
+        if (validation.similarity) {
+            html += '<br><small class="text-muted">' + validation.similarity + '%</small>';
+        }
+        html += '</td></tr>';
+    }
+    
+    html += '</tbody></table></div>';
+    html += '</div>';
+    
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+}
+
 
 function openDocumentVerificationModal() {
     const modal = new bootstrap.Modal(document.getElementById('documentVerificationModal'));
@@ -1366,7 +1749,24 @@ function verifyDocument() {
                     bootstrap.Modal.getInstance(document.getElementById('documentVerificationModal')).hide();
                 }, 4000);
             } else {
-                showDocStatus('error', data.message);
+                // Mostra erro detalhado com score
+                let errorHtml = '<strong>❌ DADOS NÃO CONFEREM!</strong><br>';
+                errorHtml += '<p class="mb-2">' + data.message + '</p>';
+                
+                // Barra de progresso do score
+                if (data.validation_percent !== undefined) {
+                    const scoreColor = data.validation_percent >= 75 ? 'success' : 
+                                     data.validation_percent >= 50 ? 'warning' : 'danger';
+                    errorHtml += '<div class="mt-3">';
+                    errorHtml += '<small class="text-muted d-block mb-1">Score de Validação:</small>';
+                    errorHtml += '<div class="progress" style="height: 25px;">';
+                    errorHtml += '<div class="progress-bar bg-' + scoreColor + '" style="width: ' + data.validation_percent + '%">';
+                    errorHtml += '<strong>' + data.validation_percent + '%</strong>';
+                    errorHtml += '</div></div>';
+                    errorHtml += '</div>';
+                }
+                
+                showDocStatus('error', errorHtml);
                 
                 // Mostra resultados parciais se houver
                 if (data.validations && Object.keys(data.validations).length > 0) {
@@ -1410,50 +1810,90 @@ function displayValidationResults(data) {
     const resultsDiv = document.getElementById('doc-validation-results');
     const tableDiv = document.getElementById('doc-validation-table');
     
-    let html = '<div class="table-responsive"><table class="table table-sm table-bordered">';
-    html += '<thead class="table-light"><tr><th>Campo</th><th>Extraído do Documento</th><th>Banco de Dados</th><th>Status</th></tr></thead>';
-    html += '<tbody>';
+    // Conta quantos campos passaram e falharam
+    let passed = 0;
+    let failed = 0;
+    for (const validation of Object.values(data.validations)) {
+        if (validation.match === true) passed++;
+        else if (validation.match === false) failed++;
+    }
     
-    // Resumo do OCR e Face
-    html += '<tr class="table-info"><td colspan="4" class="fw-bold text-center">';
-    html += '<i class="bi bi-info-circle"></i> OCR Confiança: ' + data.ocr_confidence + '% | ';
-    html += 'Similaridade Facial: ' + data.face_similarity + '% | ';
-    html += 'Score Total: ' + data.validation_percent + '%';
-    html += '</td></tr>';
+    let html = '<div class="alert alert-light border">';
+    
+    // Cabeçalho com resumo
+    html += '<div class="d-flex justify-content-between align-items-center mb-3">';
+    html += '<h6 class="mb-0"><i class="bi bi-clipboard-data"></i> Resultado da Validação</h6>';
+    html += '<div>';
+    if (passed > 0) {
+        html += '<span class="badge bg-success me-2"><i class="bi bi-check-circle"></i> ' + passed + ' Correto(s)</span>';
+    }
+    if (failed > 0) {
+        html += '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> ' + failed + ' Divergente(s)</span>';
+    }
+    html += '</div></div>';
+    
+    // Métricas resumidas
+    html += '<div class="row mb-3">';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">OCR Confiança</small>';
+    html += '<strong class="fs-5">' + (data.ocr_confidence || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">Similaridade Facial</small>';
+    html += '<strong class="fs-5">' + (data.face_similarity || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '<div class="col-md-4 text-center">';
+    html += '<div class="border rounded p-2 bg-white">';
+    html += '<small class="text-muted d-block">Score Total</small>';
+    html += '<strong class="fs-5">' + (data.validation_percent || '0') + '%</strong>';
+    html += '</div></div>';
+    html += '</div>';
+    
+    // Tabela de campos
+    html += '<div class="table-responsive">';
+    html += '<table class="table table-sm table-bordered mb-0">';
+    html += '<thead class="table-light">';
+    html += '<tr><th width="20%">Campo</th><th width="35%">Extraído do Documento</th><th width="35%">Cadastro no Sistema</th><th width="10%" class="text-center">Status</th></tr>';
+    html += '</thead><tbody>';
     
     for (const [field, validation] of Object.entries(data.validations)) {
-        const fieldName = field.replace('_', ' ').toUpperCase();
+        const fieldName = field.replace(/_/g, ' ').toUpperCase();
         let statusIcon, rowClass;
         
         if (validation.match === true) {
-            statusIcon = '<i class="bi bi-check-circle-fill text-success"></i> Válido';
+            statusIcon = '<i class="bi bi-check-circle-fill text-success fs-5"></i>';
             rowClass = 'table-success';
         } else if (validation.match === false) {
-            statusIcon = '<i class="bi bi-x-circle-fill text-danger"></i> Não confere';
+            statusIcon = '<i class="bi bi-x-circle-fill text-danger fs-5"></i>';
             rowClass = 'table-danger';
         } else {
-            statusIcon = '<i class="bi bi-info-circle-fill text-muted"></i> N/A';
+            statusIcon = '<i class="bi bi-dash-circle text-muted fs-5"></i>';
             rowClass = '';
         }
         
         html += '<tr class="' + rowClass + '">';
         html += '<td class="fw-bold">' + fieldName + '</td>';
-        html += '<td>' + (validation.extracted || '-') + '</td>';
-        html += '<td>' + (validation.database || '-') + '</td>';
-        html += '<td>' + statusIcon;
+        html += '<td><code>' + (validation.extracted || '<span class="text-muted">Não detectado</span>') + '</code></td>';
+        html += '<td><code>' + (validation.database || '<span class="text-muted">Não cadastrado</span>') + '</code></td>';
+        html += '<td class="text-center">';
+        html += statusIcon;
         
         if (validation.similarity) {
-            html += ' (' + validation.similarity + '%)';
+            html += '<br><small class="text-muted">' + validation.similarity + '%</small>';
         }
         
         html += '</td></tr>';
     }
     
     html += '</tbody></table></div>';
+    html += '</div>';
     
     tableDiv.innerHTML = html;
     resultsDiv.style.display = 'block';
 }
+
 </script>
 
 <style>

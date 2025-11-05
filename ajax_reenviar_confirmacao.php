@@ -48,7 +48,7 @@ try {
     }
     
     // Verifica permissão (admin só pode para clientes da sua empresa)
-    if ($is_admin && $cliente['id_empresa_master'] != $user_empresa_id) {
+    if ($is_admin && (int)$cliente['id_empresa_master'] !== (int)$user_empresa_id) {
         echo json_encode(['success' => false, 'message' => 'Sem permissão para este cliente']);
         exit;
     }

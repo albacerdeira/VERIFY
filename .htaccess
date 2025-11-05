@@ -1,5 +1,6 @@
 # ================================================
 # VERIFY KYC - Configuração Apache (.htaccess)
+# VERSÃO CORRIGIDA - Mantém POST nas requisições AJAX
 # ================================================
 
 # Ativar RewriteEngine
@@ -7,20 +8,38 @@ RewriteEngine On
 RewriteBase /
 
 # ================================================
-# 1. REMOVER .php DAS URLs
+# CACHE - Desabilitar cache para arquivos AJAX/PHP
 # ================================================
-# Se o arquivo .php existe, permite acesso sem a extensão
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME}\.php -f
-RewriteRule ^(.+)$ $1.php [L,QSA]
+<FilesMatch "\.(php)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+</FilesMatch>
 
 # ================================================
-# 2. REDIRECIONAR .php PARA SEM EXTENSÃO (301)
+# IMPORTANTE: Arquivos .php são acessados DIRETAMENTE
+# Não aplicar nenhuma regra de rewrite para arquivos .php
 # ================================================
-# Se alguém acessar com .php, redireciona para sem .php
-RewriteCond %{THE_REQUEST} ^GET\ /[^?\s]+\.php
-RewriteRule ^(.+)\.php$ /$1 [R=301,L]
+
+# ================================================
+# 1. NÃO REMOVER .php - Desabilitado para evitar problemas com POST
+# ================================================
+# Regras de URL rewrite DESABILITADAS para manter requisições POST funcionando
+# Se precisar de URLs amigáveis, configure no nível do Cloudflare
+
+# RewriteCond %{REQUEST_METHOD} =GET
+# RewriteCond %{REQUEST_FILENAME} !-d
+# RewriteCond %{REQUEST_FILENAME} !-f
+# RewriteCond %{REQUEST_FILENAME}\.php -f
+# RewriteRule ^(.+)$ $1.php [L,QSA]
+
+# ================================================
+# 2. NÃO REDIRECIONAR - Desabilitado para manter POST
+# ================================================
+# Regra de redirect desabilitada para manter requisições POST
+# RewriteCond %{REQUEST_METHOD} =GET
+# RewriteCond %{THE_REQUEST} ^GET\ /[^?\s]+\.php
+# RewriteRule ^(.+)\.php$ /$1 [R=301,L]
 
 # ================================================
 # 3. SEGURANÇA - Bloquear acesso a arquivos sensíveis

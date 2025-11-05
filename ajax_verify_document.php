@@ -79,6 +79,12 @@ ob_end_clean();
 
 header('Content-Type: application/json');
 
+// DEBUG TEMPORÁRIO
+error_log("=== AJAX_VERIFY_DOCUMENT ===");
+error_log("METHOD: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNDEFINED'));
+error_log("URI: " . ($_SERVER['REQUEST_URI'] ?? 'UNDEFINED'));
+error_log("REFERER: " . ($_SERVER['HTTP_REFERER'] ?? 'UNDEFINED'));
+
 // Verifica autenticação
 if (!isset($_SESSION['user_id'])) {
     echo json_encode([
@@ -106,7 +112,8 @@ if (file_exists(__DIR__ . '/.env')) {
 try {
     // Valida requisição
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        throw new Exception('Método não permitido');
+        error_log("ERRO: Recebido " . $_SERVER['REQUEST_METHOD'] . " em vez de POST");
+        throw new Exception('Método não permitido. Recebido: ' . ($_SERVER['REQUEST_METHOD'] ?? 'UNDEFINED'));
     }
     
     if (!isset($_POST['cliente_id'])) {
@@ -138,16 +145,17 @@ try {
     }
     
     // Verifica permissão de acesso
-    $is_superadmin = ($data['tipo_usuario'] === 'superadmin');
-    $is_admin = ($data['tipo_usuario'] === 'admin');
-    $is_analista = ($data['tipo_usuario'] === 'analista');
+    $user_role_lower = strtolower($data['tipo_usuario']);
+    $is_superadmin = ($user_role_lower === 'superadmin');
+    $is_admin = in_array($user_role_lower, ['admin', 'administrador']);
+    $is_analista = ($user_role_lower === 'analista');
     
     if (!$is_superadmin && !$is_admin && !$is_analista) {
         throw new Exception('Sem permissão para acessar este cliente');
     }
     
     // Admins e Analistas só podem acessar clientes da sua empresa
-    if (($is_admin || $is_analista) && $data['id_empresa_master'] != $data['user_empresa_id']) {
+    if (($is_admin || $is_analista) && (int)$data['id_empresa_master'] !== (int)$data['user_empresa_id']) {
         throw new Exception('Você não tem permissão para este cliente');
     }
     
