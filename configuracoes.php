@@ -81,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rd_station_token = trim($_POST['rd_station_token'] ?? '');
         $logo_path = $_POST['current_logo'] ?? '';
         $slug = $_POST['slug'] ?? ''; 
+        $analise_risco_cnae_ativo = isset($_POST['analise_risco_cnae_ativo']) ? 1 : 0; // Toggle CNAE
 
         try {
             if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
@@ -93,8 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else { throw new Exception("Falha ao mover o arquivo de logo enviado."); }
             }
 
-            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id, website_url = :website, rd_station_token = :rd_token";
-            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':website' => $website_url, ':rd_token' => $rd_station_token, ':id' => $empresa_id_post];
+            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id, website_url = :website, rd_station_token = :rd_token, analise_risco_cnae_ativo = :cnae_ativo";
+            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':website' => $website_url, ':rd_token' => $rd_station_token, ':cnae_ativo' => $analise_risco_cnae_ativo, ':id' => $empresa_id_post];
 
             if ($is_superadmin || empty($config_atual['slug'])) {
                 if (empty($slug)) throw new Exception("O campo Slug é obrigatório.");
@@ -259,6 +260,64 @@ if ($is_superadmin && !$empresa_id_para_editar) {
 
                     <button type="submit" class="btn btn-primary mt-3">Salvar Configurações</button>
                 </form>
+            </div>
+        </div>
+
+        <!-- Matriz de Risco por CNAE -->
+        <div class="card mt-4 border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-diagram-3"></i> Matriz de Risco por CNAE
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">
+                    <i class="bi bi-info-circle text-primary"></i>
+                    Customize a análise de risco das atividades econômicas (CNAEs) para esta empresa.
+                    Altere classificações padrão, ajuste scores e mantenha histórico completo de auditoria.
+                </p>
+                
+                <!-- Toggle para habilitar/desabilitar análise CNAE no KYC -->
+                <div class="alert alert-warning border-start border-warning border-3 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="toggle_analise_cnae" 
+                               name="analise_risco_cnae_ativo" value="1"
+                               <?= !empty($config['analise_risco_cnae_ativo']) ? 'checked' : '' ?>
+                               onchange="this.form.submit()">
+                        <label class="form-check-label fw-bold" for="toggle_analise_cnae">
+                            <i class="bi bi-toggle-on me-2"></i>
+                            Habilitar Análise Automática de CNAE no KYC
+                        </label>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Quando ativado, a análise de risco por CNAE será exibida automaticamente na tela de avaliação de casos KYC,
+                        mostrando a classificação de risco de todos os CNAEs da empresa (principal e secundários).
+                    </small>
+                </div>
+                
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <strong>Recursos:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>120+ CNAEs pré-cadastrados com classificação padrão</li>
+                            <li>Customização por empresa com justificativa obrigatória</li>
+                            <li>Histórico completo de alterações (data, hora, usuário)</li>
+                            <li>Integração automática com avaliações KYC</li>
+                            <li>Cadastro de novos CNAEs na matriz padrão</li>
+                        </ul>
+                    </div>
+                    <div class="text-end">
+                        <a href="cnae_risk_matrix.php" class="btn btn-primary btn-lg mb-2">
+                            <i class="bi bi-gear-fill"></i> Gerenciar Matriz de Risco
+                        </a>
+                        <br>
+                        <a href="cnae_risk_matrix.php#cadastrar" class="btn btn-outline-success" 
+                           onclick="setTimeout(function(){ document.querySelector('[data-bs-target=\'#modalCadastrarCNAE\']')?.click(); }, 500);">
+                            <i class="bi bi-plus-circle"></i> Cadastrar Novo CNAE
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -1,6 +1,7 @@
 <?php
 $page_title = 'Análise de Caso KYC';
 require_once 'bootstrap.php'; // Usa o novo sistema de inicialização
+require_once __DIR__ . '/includes/cnae_risk_helper.php'; // Helper para análise de risco CNAE
 
 // --- Validação de Acesso e Permissões ---
 $kyc_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -1034,6 +1035,181 @@ function render_checklist_icon($name, $label, $is_checked) {
                                     </div>
                                 </div>
                             </div>
+                            
+                            <?php if (!empty($config['analise_risco_cnae_ativo'])): ?>
+                            <!-- Item 3: Análise de Risco por CNAE -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button" style="background-color: <?= $cor_variavel ?>33;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCnae" aria-expanded="true">
+                                        <i class="bi bi-diagram-3 me-2"></i><strong>Análise de Risco por CNAE</strong>
+                                    </button>
+                                </h2>
+                                <div id="collapseCnae" class="accordion-collapse collapse show" data-bs-parent="#accordionChecklist">
+                                    <div class="accordion-body">
+                                        <?php
+                                        // Buscar CNAE principal
+                                        $cnae_principal = $caso['cnae_fiscal'] ?? null;
+                                        $cnae_principal_desc = $caso['cnae_fiscal_descricao'] ?? '';
+                                        
+                                        // Buscar CNAEs secundários
+                                        $stmt_cnaes_sec = $pdo->prepare("
+                                            SELECT cnae, descricao 
+                                            FROM kyc_cnaes_secundarios 
+                                            WHERE empresa_id = :empresa_id 
+                                            ORDER BY id
+                                        ");
+                                        $stmt_cnaes_sec->execute(['empresa_id' => $kyc_id]);
+                                        $cnaes_secundarios = $stmt_cnaes_sec->fetchAll(PDO::FETCH_ASSOC);
+                                        
+                                        // Montar array com todos os CNAEs
+                                        $todos_cnaes = [];
+                                        if ($cnae_principal) {
+                                            $todos_cnaes[] = [
+                                                'cnae' => $cnae_principal,
+                                                'descricao' => $cnae_principal_desc,
+                                                'tipo' => 'Principal',
+                                                'is_principal' => true
+                                            ];
+                                        }
+                                        
+                                        foreach ($cnaes_secundarios as $cnae_sec) {
+                                            $todos_cnaes[] = [
+                                                'cnae' => $cnae_sec['cnae'],
+                                                'descricao' => $cnae_sec['descricao'],
+                                                'tipo' => 'Secundário',
+                                                'is_principal' => false
+                                            ];
+                                        }
+                                        
+                                        if (empty($todos_cnaes)):
+                                        ?>
+                                            <div class="alert alert-warning mb-0">
+                                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                                Nenhum CNAE cadastrado para esta empresa.
+                                            </div>
+                                        <?php else: 
+                                            // Calcular risco agregado
+                                            $total_score = 0;
+                                            $max_risk = 'Baixo';
+                                            $risk_order = ['Baixo' => 1, 'Médio' => 2, 'Alto' => 3, 'Extremo' => 4];
+                                            $cnaes_com_risco = [];
+                                            
+                                            foreach ($todos_cnaes as $cnae_item) {
+                                                $risk_data = getCnaeRisk($pdo, $cnae_item['cnae'], $whitelabel_id);
+                                                
+                                                if ($risk_data) {
+                                                    $cnaes_com_risco[] = array_merge($cnae_item, ['risk_data' => $risk_data]);
+                                                    $total_score += $risk_data['score'];
+                                                    
+                                                    // Atualizar risco máximo
+                                                    if ($risk_order[$risk_data['classificacao']] > $risk_order[$max_risk]) {
+                                                        $max_risk = $risk_data['classificacao'];
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Média ponderada de score
+                                            $avg_score = count($cnaes_com_risco) > 0 ? round($total_score / count($cnaes_com_risco), 1) : 0;
+                                        ?>
+                                        
+                                        <!-- Resumo de Risco CNAE -->
+                                        <div class="alert alert-info mb-3">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-6">
+                                                    <h6 class="mb-1"><i class="bi bi-bar-chart-fill me-2"></i>Risco Agregado dos CNAEs</h6>
+                                                    <p class="mb-0 small">
+                                                        <strong>Classificação Máxima:</strong> 
+                                                        <span class="badge bg-<?= $max_risk == 'Baixo' ? 'success' : ($max_risk == 'Médio' ? 'warning' : ($max_risk == 'Alto' ? 'danger' : 'dark')) ?> ms-2">
+                                                            <?= htmlspecialchars($max_risk) ?>
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                                <div class="col-md-6 text-md-end">
+                                                    <h6 class="mb-1">Score Médio</h6>
+                                                    <span class="badge bg-secondary fs-6"><?= $avg_score ?> pontos</span>
+                                                    <small class="d-block text-muted mt-1"><?= count($cnaes_com_risco) ?> CNAE(s) analisado(s)</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Lista de CNAEs -->
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th width="10%">Tipo</th>
+                                                        <th width="15%">CNAE</th>
+                                                        <th width="35%">Descrição</th>
+                                                        <th width="20%">Classificação</th>
+                                                        <th width="10%">Score</th>
+                                                        <th width="10%">Mult.</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($cnaes_com_risco as $item): 
+                                                        $rd = $item['risk_data'];
+                                                        $is_custom = $rd['is_customized'];
+                                                    ?>
+                                                    <tr>
+                                                        <td>
+                                                            <?php if ($item['is_principal']): ?>
+                                                                <span class="badge bg-primary">Principal</span>
+                                                            <?php else: ?>
+                                                                <span class="badge bg-secondary">Secundário</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td><code><?= htmlspecialchars($item['cnae']) ?></code></td>
+                                                        <td>
+                                                            <small><?= htmlspecialchars($item['descricao']) ?></small>
+                                                        </td>
+                                                        <td>
+                                                            <?= renderCnaeRiskBadge($rd) ?>
+                                                            <?php if (!empty($rd['observacoes'])): ?>
+                                                                <i class="bi bi-info-circle text-info ms-1" 
+                                                                   data-bs-toggle="tooltip" 
+                                                                   title="<?= htmlspecialchars($rd['observacoes']) ?>"></i>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-light text-dark border"><?= $rd['score'] ?></span>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-light text-dark border"><?= $rd['multiplicador'] ?>x</span>
+                                                        </td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <?php 
+                                        // Verificar se há customizações
+                                        $has_custom = false;
+                                        foreach ($cnaes_com_risco as $item) {
+                                            if ($item['risk_data']['is_customized']) {
+                                                $has_custom = true;
+                                                break;
+                                            }
+                                        }
+                                        
+                                        if ($has_custom): 
+                                        ?>
+                                        <div class="alert alert-light border-start border-info border-3 mb-0 mt-2">
+                                            <small>
+                                                <i class="bi bi-pencil-square me-1"></i> 
+                                                <strong>Legenda:</strong> 
+                                                ⭐ = Classificação padrão do sistema | 
+                                                ✏️ = Classificação customizada para sua empresa
+                                            </small>
+                                        </div>
+                                        <?php endif; ?>
+                                        
+                                        <?php endif; // fim else empty cnaes ?>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; // fim if analise_risco_cnae_ativo ?>
+                            
                         </div>
                         
                         <div class="mb-3"><label for="anotacoes" class="form-label fw-bold">Anotações Internas</label><textarea name="av_anotacoes_internas" class="form-control" rows="5"><?= htmlspecialchars($caso['av_anotacoes_internas'] ?? ''); ?></textarea></div>

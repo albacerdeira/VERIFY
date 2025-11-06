@@ -8,11 +8,12 @@ error_reporting(E_ALL);
 date_default_timezone_set('America/Sao_Paulo');
 
 // --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+// COPIE ESTE ARQUIVO PARA config.php E PREENCHA COM SUAS CREDENCIAIS REAIS
 define('DB_HOST', 'localhost');
-define('DB_USER', 'u640879529_kyc');
-define('DB_PASS', '005@Fabio');
-define('DB_NAME', 'u640879529_kyc');
-define('SITE_URL', 'https://verify2b.com');
+define('DB_USER', 'SEU_USUARIO_AQUI');
+define('DB_PASS', 'SUA_SENHA_AQUI');
+define('DB_NAME', 'SEU_DATABASE_AQUI');
+define('SITE_URL', 'https://seu-dominio.com');
 
 // --- CRIAÇÃO DA CONEXÃO PDO ---
 try {
@@ -29,18 +30,5 @@ try {
 } catch (PDOException $e) {
     error_log('FATAL: Erro de Conexão com o Banco de Dados: ' . $e->getMessage());
     http_response_code(500);
-    exit('Erro interno no servidor.'); 
+    die('Erro ao conectar ao banco de dados. Verifique o log de erros.');
 }
-
-// --- CONFIGURAÇÃO DE E-MAIL (SMTP) ---
-define('SMTP_HOST', 'smtp.hostinger.com');
-define('SMTP_USER', 'noreply@foconteudo.com.br');
-define('SMTP_PASS', '005@Fabio');
-define('SMTP_PORT', 587);
-define('SMTP_FROM_EMAIL', 'noreply@foconteudo.com.br');
-define('SMTP_FROM_NAME', 'Plataforma KYC');
-
-// --- CAMINHOS E DIRETÓRIOS ---
-define('SERVER_ROOT', __DIR__);
-define('UPLOAD_DIR', SERVER_ROOT . '/uploads');
-define('PHPMAILER_DIR', SERVER_ROOT . '/vendor/phpmailer/phpmailer/src/');

@@ -2,8 +2,10 @@
 /vendor/
 composer.lock
 
-# Arquivos de configuração de ambiente
+# Arquivos de configuração de ambiente (NUNCA COMMITAR!)
 .env
+env.php
+config.php
 
 # Scripts de setup e arquivos temporários
 db_setup.php
@@ -18,6 +20,7 @@ generate_hash.php
 .idea/
 .vscode/
 .idx/
+
 # Pastas de backup
 bkp 18-10/
 bkp 19_10/

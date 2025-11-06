@@ -7,6 +7,15 @@ $id_empresa_master_contexto = null;
 $slug_contexto = $_GET['cliente'] ?? null;
 $is_superadmin_on_kyc = false; // Inicia como falso por padrão
 
+// Inicializa $config com valores padrão caso não seja carregado depois
+$config = [
+    'nome_empresa' => $nome_empresa_contexto,
+    'logo_url' => $logo_url_contexto,
+    'cor_variavel' => $cor_variavel_contexto,
+    'slug' => null,
+    'analise_risco_cnae_ativo' => 0
+];
+
 $empresa_id_para_buscar = null;
 
 // Prioridade 1: Slug na URL (para links públicos/clientes).
@@ -31,7 +40,7 @@ elseif ($user_empresa_id) {
 // Se um ID de empresa foi encontrado, busca as configurações de whitelabel.
 if ($empresa_id_para_buscar) {
     try {
-        $stmt = $pdo->prepare("SELECT nome_empresa, logo_url, cor_variavel, slug FROM configuracoes_whitelabel WHERE empresa_id = ?");
+        $stmt = $pdo->prepare("SELECT nome_empresa, logo_url, cor_variavel, slug, analise_risco_cnae_ativo FROM configuracoes_whitelabel WHERE empresa_id = ?");
         $stmt->execute([$empresa_id_para_buscar]);
         $config = $stmt->fetch();
 
