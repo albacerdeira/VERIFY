@@ -7,6 +7,9 @@ composer.lock
 env.php
 config.php
 
+# Documentação de segurança (informações sensíveis)
+SECURITY_GUIDE.md
+
 # Scripts de setup e arquivos temporários
 db_setup.php
 seed_data.php
