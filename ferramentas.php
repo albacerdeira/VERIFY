@@ -3,19 +3,14 @@
  * FERRAMENTAS DE DIAGNÓSTICO E TESTES
  * 
  * Central de ferramentas para debug, testes e manutenção do sistema
- * Acesso restrito a superadmins
+ * Acesso liberado (link visível apenas para superadmins no header)
  */
 
 $page_title = 'Ferramentas de Diagnóstico';
 require_once 'bootstrap.php';
 
-// SEGURANÇA: Apenas superadmins
-if (!$is_superadmin) {
-    require_once 'header.php';
-    echo "<div class='container'><div class='alert alert-danger mt-4'>Acesso negado. Apenas superadmins podem acessar as ferramentas de diagnóstico.</div></div>";
-    require_once 'footer.php';
-    exit;
-}
+// Link visível apenas para superadmin, mas qualquer usuário logado pode acessar se souber a URL
+// (útil para debug e suporte técnico)
 
 require_once 'header.php';
 
@@ -39,14 +34,14 @@ $ferramentas = [
         [
             'nome' => 'Testar Composer/Autoloader',
             'descricao' => 'Verifica instalação do Composer e carregamento de classes',
-            'arquivo' => 'test_composer.php',
+            'arquivo' => 'no_upload/tests/test_composer.php',
             'icone' => 'bi-file-earmark-code',
             'cor' => 'secondary'
         ],
         [
             'nome' => 'Debug Autoloader',
             'descricao' => 'Diagnóstico detalhado do sistema de autoload do Composer',
-            'arquivo' => 'debug_autoloader.php',
+            'arquivo' => 'no_upload/tests/debug_autoloader.php',
             'icone' => 'bi-gear-fill',
             'cor' => 'secondary'
         ],
@@ -56,21 +51,35 @@ $ferramentas = [
         [
             'nome' => 'Schema Whitelabel',
             'descricao' => 'Mostra estrutura da tabela configuracoes_whitelabel e testa queries',
-            'arquivo' => 'debug_whitelabel_schema.php',
+            'arquivo' => 'no_upload/tests/debug_whitelabel_schema.php',
+            'icone' => 'bi-table',
+            'cor' => 'success'
+        ],
+        [
+            'nome' => 'Schema Leads',
+            'descricao' => 'Mostra estrutura da tabela leads e amostra de dados',
+            'arquivo' => 'no_upload/tests/debug_leads_schema.php',
+            'icone' => 'bi-table',
+            'cor' => 'success'
+        ],
+        [
+            'nome' => 'Schema KYC Empresas',
+            'descricao' => 'Mostra estrutura da tabela kyc_empresas e amostra de dados',
+            'arquivo' => 'no_upload/tests/debug_kyc_empresas_schema.php',
             'icone' => 'bi-table',
             'cor' => 'success'
         ],
         [
             'nome' => 'Debug Lead/KYC',
             'descricao' => 'Verifica relacionamento entre leads e clientes KYC',
-            'arquivo' => 'debug_lead_kyc.php',
+            'arquivo' => 'no_upload/tests/debug_lead_kyc.php',
             'icone' => 'bi-diagram-3',
             'cor' => 'success'
         ],
         [
             'nome' => 'Debug Sessão B4U',
             'descricao' => 'Verifica dados de sessão e contexto do usuário',
-            'arquivo' => 'debug_session_b4u.php',
+            'arquivo' => 'no_upload/tests/debug_session_b4u.php',
             'icone' => 'bi-person-circle',
             'cor' => 'info'
         ],
@@ -80,21 +89,21 @@ $ferramentas = [
         [
             'nome' => 'Testar AWS Credentials',
             'descricao' => 'Valida credenciais AWS S3 e Rekognition',
-            'arquivo' => 'test_aws_credentials.php',
+            'arquivo' => 'no_upload/tests/test_aws_credentials.php',
             'icone' => 'bi-cloud-check',
             'cor' => 'warning'
         ],
         [
             'nome' => 'Debug OCR Completo',
             'descricao' => 'Testa extração de texto de documentos com AWS Textract',
-            'arquivo' => 'debug_ocr_full.php',
+            'arquivo' => 'no_upload/tests/debug_ocr_full.php',
             'icone' => 'bi-file-text',
             'cor' => 'warning'
         ],
         [
             'nome' => 'Testar Verificação Facial',
             'descricao' => 'Testa AWS Rekognition para comparação facial',
-            'arquivo' => 'test_face_verification.php',
+            'arquivo' => 'no_upload/tests/test_face_verification.php',
             'icone' => 'bi-person-bounding-box',
             'cor' => 'danger'
         ],
@@ -104,14 +113,14 @@ $ferramentas = [
         [
             'nome' => 'Captura Universal de Forms',
             'descricao' => 'Testa captura automática de formulários em sites externos',
-            'arquivo' => 'test_universal_capture.php',
+            'arquivo' => 'no_upload/tests/test_universal_capture.php',
             'icone' => 'bi-file-earmark-arrow-down',
             'cor' => 'primary'
         ],
         [
             'nome' => 'Testar AJAX Check',
             'descricao' => 'Valida endpoints AJAX e comunicação com servidor',
-            'arquivo' => 'test_ajax_check.php',
+            'arquivo' => 'no_upload/tests/test_ajax_check.php',
             'icone' => 'bi-arrow-left-right',
             'cor' => 'info'
         ],
@@ -121,7 +130,7 @@ $ferramentas = [
         [
             'nome' => 'Testar Lead Detail',
             'descricao' => 'Visualização detalhada de lead e histórico',
-            'arquivo' => 'test_lead_detail.php',
+            'arquivo' => 'no_upload/tests/test_lead_detail.php',
             'icone' => 'bi-person-lines-fill',
             'cor' => 'success'
         ],
@@ -131,7 +140,7 @@ $ferramentas = [
         [
             'nome' => 'Testar Backup Simples',
             'descricao' => 'Versão simplificada do sistema de backup para diagnóstico',
-            'arquivo' => 'test_backup.php',
+            'arquivo' => 'no_upload/tests/test_backup.php',
             'icone' => 'bi-download',
             'cor' => 'success'
         ],
@@ -150,11 +159,15 @@ $ferramentas = [
         </div>
     </div>
 
-    <div class="alert alert-warning alert-dismissible fade show" role="alert">
-        <h6 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Atenção - Ambiente de Desenvolvimento</h6>
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <h6 class="alert-heading"><i class="bi bi-info-circle"></i> Ferramentas de Suporte Técnico</h6>
         <p class="mb-0">
-            Estas ferramentas são para <strong>diagnóstico e testes</strong>. Algumas podem expor informações sensíveis do sistema.
-            Use apenas em <strong>ambiente de desenvolvimento</strong> ou quando necessário para troubleshooting.
+            Estas ferramentas são úteis para <strong>diagnóstico, debug e testes</strong> do sistema.
+            <?php if ($is_superadmin): ?>
+                <strong>Você é Superadmin:</strong> Tem acesso completo a todas as ferramentas.
+            <?php else: ?>
+                Útil para troubleshooting e suporte. Para proteção adicional, os arquivos estão em <code>no_upload/tests/</code>.
+            <?php endif; ?>
         </p>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste POST via Formulário HTML Puro</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .result { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #log { white-space: pre-wrap; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste Diagnóstico POST</h1>
+    
+    <h2>Teste 1: Formulário HTML Tradicional (POST)</h2>
+    <form method="POST" action="test_post_direct.php" target="_blank">
+        <input type="text" name="teste_html" value="Formulário HTML POST">
+        <button type="submit">Enviar via Form HTML POST</button>
+    </form>
+    
+    <hr>
+    
+    <h2>Teste 2: Fetch API com JSON</h2>
+    <button onclick="testFetchJSON()">Enviar via Fetch JSON</button>
+    
+    <hr>
+    
+    <h2>Teste 3: Fetch API com FormData</h2>
+    <button onclick="testFetchFormData()">Enviar via Fetch FormData</button>
+    
+    <hr>
+    
+    <h2>Teste 4: XMLHttpRequest (método antigo)</h2>
+    <button onclick="testXHR()">Enviar via XMLHttpRequest</button>
+    
+    <div class="result">
+        <h3>Resultado:</h3>
+        <div id="log">Clique em um dos botões acima...</div>
+    </div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('log').textContent = msg;
+        }
+
+        function testFetchJSON() {
+            log('Enviando Fetch com JSON...');
+            fetch('test_post_direct.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    teste: 'Fetch JSON POST',
+                    timestamp: new Date().toISOString()
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                log('MÉTODO RECEBIDO: ' + data.method + '\n\n' + JSON.stringify(data, null, 2));
+            })
+            .catch(err => log('ERRO: ' + err));
+        }
+
+        function testFetchFormData() {
+            log('Enviando Fetch com FormData...');
+            const formData = new FormData();
+            formData.append('teste', 'Fetch FormData POST');
+            formData.append('timestamp', new Date().toISOString());
+            
+            fetch('test_post_direct.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                log('MÉTODO RECEBIDO: ' + data.method + '\n\n' + JSON.stringify(data, null, 2));
+            })
+            .catch(err => log('ERRO: ' + err));
+        }
+
+        function testXHR() {
+            log('Enviando XMLHttpRequest...');
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'test_post_direct.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onload = function() {
+                const data = JSON.parse(xhr.responseText);
+                log('MÉTODO RECEBIDO: ' + data.method + '\n\n' + JSON.stringify(data, null, 2));
+            };
+            
+            xhr.onerror = function() {
+                log('ERRO: ' + xhr.statusText);
+            };
+            
+            xhr.send('teste=XMLHttpRequest POST&timestamp=' + new Date().toISOString());
+        }
+    </script>
+</body>
+</html>

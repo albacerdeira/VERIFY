@@ -210,10 +210,55 @@ try {
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
     
+    // LOG: Registra payload recebido para debug
+    error_log("=== WEBHOOK RD STATION RECEBIDO ===");
+    error_log("Empresa ID: $empresa_id");
+    error_log("Payload raw: " . substr($input, 0, 500)); // Primeiros 500 caracteres
+    error_log("Campos recebidos: " . implode(', ', array_keys($data ?: [])));
+    
     if (json_last_error() !== JSON_ERROR_NONE) {
         http_response_code(400);
-        echo json_encode(['error' => 'JSON inválido']);
+        echo json_encode([
+            'error' => 'JSON inválido',
+            'json_error' => json_last_error_msg()
+        ]);
         exit;
+    }
+    
+    // MAPEAMENTO DE CAMPOS DO RD STATION
+    // O RD Station envia campos com nomes diferentes, vamos normalizá-los
+    $field_mapping = [
+        // Nome
+        'name' => 'nome',
+        'full_name' => 'nome',
+        'lead_name' => 'nome',
+        
+        // Telefone/WhatsApp
+        'mobile_phone' => 'whatsapp',
+        'phone' => 'whatsapp',
+        'telefone' => 'whatsapp',
+        'celular' => 'whatsapp',
+        
+        // Empresa
+        'company' => 'empresa',
+        'company_name' => 'empresa',
+        
+        // Mensagem
+        'message' => 'mensagem',
+        'comments' => 'mensagem',
+        'comment' => 'mensagem',
+        
+        // UTM
+        'traffic_source' => 'utm_source',
+        'traffic_medium' => 'utm_medium',
+        'traffic_campaign' => 'utm_campaign'
+    ];
+    
+    // Aplica o mapeamento
+    foreach ($field_mapping as $rd_field => $our_field) {
+        if (isset($data[$rd_field]) && !isset($data[$our_field])) {
+            $data[$our_field] = $data[$rd_field];
+        }
     }
     
     // Validação dos campos obrigatórios
@@ -221,7 +266,11 @@ try {
     foreach ($required_fields as $field) {
         if (empty($data[$field])) {
             http_response_code(400);
-            echo json_encode(['error' => "Campo obrigatório: {$field}"]);
+            echo json_encode([
+                'error' => "Campo obrigatório: {$field}",
+                'hint' => 'Certifique-se de que o RD Station está enviando: nome (ou name), email, whatsapp (ou mobile_phone)',
+                'received_fields' => array_keys($data)
+            ]);
             exit;
         }
     }

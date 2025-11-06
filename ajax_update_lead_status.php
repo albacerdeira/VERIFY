@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Analistas não podem alterar status de leads
-if ($_SESSION['user_role'] === 'analista') {
+if ($user_role === 'analista') {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Sem permissão']);
     exit;
@@ -44,19 +44,33 @@ try {
     $lead = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$lead) {
-        echo json_encode(['success' => false, 'message' => 'Lead não encontrado']);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Lead não encontrado',
+            'debug' => [
+                'lead_id' => $lead_id
+            ]
+        ]);
         exit;
     }
-    
+
     // Verifica se usuário tem permissão (admin só pode alterar leads da sua empresa)
-    if ($_SESSION['user_role'] === 'administrador' && $lead['id_empresa_master'] != $_SESSION['user_empresa_id']) {
-        echo json_encode(['success' => false, 'message' => 'Sem permissão para este lead']);
+    if ($user_role === 'administrador' && $lead['id_empresa_master'] != $user_empresa_id) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Sem permissão para este lead',
+            'debug' => [
+                'user_role' => $user_role,
+                'user_empresa_id' => $user_empresa_id,
+                'lead_empresa_master' => $lead['id_empresa_master']
+            ]
+        ]);
         exit;
     }
-    
+
     // Atualiza status
     $stmt = $pdo->prepare("
-        UPDATE leads 
+        UPDATE leads
         SET status = ?,
             updated_at = NOW()
         WHERE id = ?
@@ -82,5 +96,12 @@ try {
     
 } catch (PDOException $e) {
     error_log("Erro ao atualizar status do lead: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Erro ao atualizar status']);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Erro ao atualizar status: ' . $e->getMessage(),
+        'debug' => [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]
+    ]);
 }

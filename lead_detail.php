@@ -556,27 +556,44 @@ function enviarFormularioKYC(leadId) {
 function saveStatus() {
     const newStatus = document.getElementById('newStatus').value;
     const observacao = document.getElementById('statusObservacao').value;
-    
+
+    console.log('Enviando mudança de status:', {
+        lead_id: <?= $lead_id ?>,
+        status: newStatus,
+        observacao: observacao
+    });
+
     fetch('ajax_update_lead_status.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            lead_id: <?= $lead_id ?>, 
-            status: newStatus, 
-            observacao: observacao 
+        body: JSON.stringify({
+            lead_id: <?= $lead_id ?>,
+            status: newStatus,
+            observacao: observacao
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         if (data.success) {
+            alert('✅ Status atualizado com sucesso!');
             location.reload();
         } else {
-            alert('Erro ao atualizar status: ' + data.message);
+            let errorMsg = '❌ Erro ao atualizar status: ' + data.message;
+            if (data.debug) {
+                console.error('Debug info:', data.debug);
+                errorMsg += '\n\nDebug (veja console):';
+                errorMsg += '\n' + JSON.stringify(data.debug, null, 2);
+            }
+            alert(errorMsg);
         }
     })
     .catch(error => {
-        console.error('Erro:', error);
-        alert('Erro de conexão ao atualizar status');
+        console.error('Erro de conexão:', error);
+        alert('❌ Erro de conexão ao atualizar status\n\nDetalhes no console.');
     });
 }
 </script>

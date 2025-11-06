@@ -1,17 +1,26 @@
 <?php
 // kyc_evaluate_accordion.php
 
+// Usa a cor do whitelabel já carregada no bootstrap.php
+// Calcula a cor com 30% de opacidade
+$cor_hex = ltrim($cor_variavel, '#');
+$r = hexdec(substr($cor_hex, 0, 2));
+$g = hexdec(substr($cor_hex, 2, 2));
+$b = hexdec(substr($cor_hex, 4, 2));
+$cor_whitelabel_30 = "rgba($r, $g, $b, 0.3)";
+
 if (!function_exists('render_accordion_item')) {
-    function render_accordion_item($id, $title, $content, $parentId = 'kycDataAccordion') {
+    function render_accordion_item($id, $title, $content, $parentId = 'kycDataAccordion', $cor_bg = null) {
         $safe_content = $content ?? '<p class="text-muted">Nenhuma informação disponível.</p>';
+        $style_bg = $cor_bg ? " style='background-color: $cor_bg;'" : '';
         return sprintf(
             '<div class="accordion-item">
                 <h2 class="accordion-header" id="heading%s">
-                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse%s" aria-expanded="false" aria-controls="collapse%s">%s</button>
+                    <button class="accordion-button collapsed"%s type="button" data-bs-toggle="collapse" data-bs-target="#collapse%s" aria-expanded="false" aria-controls="collapse%s">%s</button>
                 </h2>
                 <div id="collapse%s" class="accordion-collapse collapse" aria-labelledby="heading%s" data-bs-parent="#%s"><div class="accordion-body">%s</div></div>
             </div>',
-            $id, $id, $id, htmlspecialchars($title), $id, $id, $parentId, $safe_content
+            $id, $style_bg, $id, $id, htmlspecialchars($title), $id, $id, $parentId, $safe_content
         );
     }
 }
@@ -187,11 +196,47 @@ if (count($socios_data) > 0) {
         <hr>
         <h6>Documentos do Sócio</h6>
         <?php if (!empty($docs_por_socio[$socio_id])): ?>
-            <ul class="list-group list-group-flush">
-            <?php foreach ($docs_por_socio[$socio_id] as $doc): ?>
-                <li class="list-group-item"><a href="<?= htmlspecialchars($doc['path_arquivo'] ?? '#') ?>" target="_blank"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $doc['tipo_documento'] ?? 'Documento'))) ?></a></li>
-            <?php endforeach; ?>
-            </ul>
+            <div class="row" id="documentosSocioList_<?= $socio_id ?>">
+                <?php foreach ($docs_por_socio[$socio_id] as $doc): 
+                    $doc_path = $doc['path_arquivo'] ?? '#';
+                    $doc_name = ucfirst(str_replace('_', ' ', $doc['tipo_documento'] ?? 'Documento'));
+                    $doc_ext = strtolower(pathinfo($doc_path, PATHINFO_EXTENSION));
+                    $icon_class = 'bi-file-earmark';
+                    if (in_array($doc_ext, ['jpg', 'jpeg', 'png', 'gif'])) {
+                        $icon_class = 'bi-file-earmark-image';
+                    } elseif ($doc_ext === 'pdf') {
+                        $icon_class = 'bi-file-earmark-pdf';
+                    }
+                ?>
+                <div class="col-md-6 mb-2">
+                    <button type="button" 
+                            class="btn btn-outline-secondary btn-sm w-100 text-truncate doc-preview-btn" 
+                            data-doc-path="<?= htmlspecialchars($doc_path) ?>" 
+                            data-doc-name="<?= htmlspecialchars($doc_name) ?>" 
+                            data-doc-ext="<?= htmlspecialchars($doc_ext) ?>">
+                        <i class="bi <?= $icon_class ?> me-1"></i><?= htmlspecialchars($doc_name) ?>
+                    </button>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <!-- Visualizador de Documentos do Sócio -->
+            <div id="documentViewerSocio_<?= $socio_id ?>" class="mt-3" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0 viewerTitle">Documento</h6>
+                    <div>
+                        <a href="#" target="_blank" class="btn btn-sm btn-outline-primary me-1 viewerOpenNew" title="Abrir em nova aba">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary viewerClose" title="Fechar">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="border rounded p-2 bg-light viewerContent" style="min-height: 300px; max-height: 500px; overflow: auto;">
+                    <!-- Conteúdo do preview será carregado aqui -->
+                </div>
+            </div>
         <?php else: ?>
             <p class="text-muted">Nenhum documento específico encontrado para este sócio.</p>
         <?php endif; ?>
@@ -211,7 +256,7 @@ if (count($socios_data) > 0) {
         <?php
         $socio_content = ob_get_clean();
         $socio_title = ($socio['nome_completo'] ?? 'Sócio não identificado');
-        echo render_accordion_item($accordion_id, $socio_title, $socio_content, 'sociosAccordion');
+        echo render_accordion_item($accordion_id, $socio_title, $socio_content, 'sociosAccordion', $cor_whitelabel_30);
     }
     echo '</div>';
 } else {
@@ -232,7 +277,55 @@ $content3 = $content3_existing . ob_get_clean();
 ?>
 
 <div class="accordion" id="kycDataAccordion">
-    <?= render_accordion_item('One', 'Dados da Empresa', $content1); ?>
-    <?= render_accordion_item('Two', 'Perfil de Negócio e Financeiro', $content2); ?>
-    <?= render_accordion_item('Three', 'Sócios e Administradores (UBOs)', $content3); ?>
+    <?= render_accordion_item('One', 'Dados da Empresa', $content1, 'kycDataAccordion', $cor_whitelabel_30); ?>
+    <?= render_accordion_item('Two', 'Perfil de Negócio e Financeiro', $content2, 'kycDataAccordion', $cor_whitelabel_30); ?>
+    <?= render_accordion_item('Three', 'Sócios e Administradores (UBOs)', $content3, 'kycDataAccordion', $cor_whitelabel_30); ?>
 </div>
+
+<script>
+// Preview de documentos dos sócios
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.doc-preview-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const docPath = this.dataset.docPath;
+            const docName = this.dataset.docName;
+            const docExt = this.dataset.docExt;
+            
+            // Encontra o viewer do sócio correspondente
+            const socioContainer = this.closest('[id^="documentosSocioList_"]');
+            const socioId = socioContainer.id.replace('documentosSocioList_', '');
+            const viewer = document.getElementById('documentViewerSocio_' + socioId);
+            const viewerContent = viewer.querySelector('.viewerContent');
+            const viewerTitle = viewer.querySelector('.viewerTitle');
+            const viewerOpenNew = viewer.querySelector('.viewerOpenNew');
+            
+            // Atualiza título e link
+            viewerTitle.textContent = docName;
+            viewerOpenNew.href = docPath;
+            
+            // Limpa conteúdo anterior
+            viewerContent.innerHTML = '';
+            
+            // Carrega preview baseado no tipo
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(docExt)) {
+                viewerContent.innerHTML = `<img src="${docPath}" class="img-fluid" alt="${docName}">`;
+            } else if (docExt === 'pdf') {
+                viewerContent.innerHTML = `<embed src="${docPath}" type="application/pdf" width="100%" height="480px" />`;
+            } else {
+                viewerContent.innerHTML = `<p class="text-center text-muted my-5">Preview não disponível para este tipo de arquivo. <a href="${docPath}" target="_blank">Abrir arquivo</a></p>`;
+            }
+            
+            // Mostra o viewer
+            viewer.style.display = 'block';
+        });
+    });
+    
+    // Fecha o viewer
+    document.querySelectorAll('.viewerClose').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const viewer = this.closest('[id^="documentViewerSocio_"]');
+            viewer.style.display = 'none';
+        });
+    });
+});
+</script>

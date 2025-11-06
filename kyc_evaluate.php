@@ -39,10 +39,24 @@ $caso = $stmt_caso->fetch(PDO::FETCH_ASSOC);
 
 // --- Buscar dados do cliente associado ao caso ---
 $cliente = null;
+$doc_verificado = null;
+$face_verificado = null;
+
 if ($caso && !empty($caso['cliente_id'])) {
     $stmt_cliente = $pdo->prepare("SELECT id, nome_completo, cpf, email, status, created_at, updated_at, selfie_path FROM kyc_clientes WHERE id = :cliente_id");
     $stmt_cliente->execute(['cliente_id' => $caso['cliente_id']]);
     $cliente = $stmt_cliente->fetch(PDO::FETCH_ASSOC);
+    
+    // Busca status das verificações
+    if ($cliente) {
+        $stmt_doc = $pdo->prepare("SELECT verification_result FROM document_verifications WHERE cliente_id = ? ORDER BY created_at DESC LIMIT 1");
+        $stmt_doc->execute([$cliente['id']]);
+        $doc_verificado = $stmt_doc->fetchColumn();
+        
+        $stmt_face = $pdo->prepare("SELECT verification_result FROM facial_verifications WHERE cliente_id = ? ORDER BY created_at DESC LIMIT 1");
+        $stmt_face->execute([$cliente['id']]);
+        $face_verificado = $stmt_face->fetchColumn();
+    }
 }
 
 // --- VERIFICAÇÃO CEIS (PJ - Empresa) ---
@@ -803,6 +817,52 @@ function render_checklist_icon($name, $label, $is_checked) {
                             </h2>
                             <div id="collapseFichaCliente" class="accordion-collapse collapse">
                                 <div class="accordion-body">
+                                    <!-- Verificações e Botão -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-6 text-center">
+                                            <p class="mb-2"><strong>Verificações:</strong></p>
+                                            <?php
+                                            // Ícone Documental
+                                            $doc_class = 'text-secondary';
+                                            $doc_tooltip = 'Verificação Documental: Não realizada';
+                                            if ($doc_verificado === 'success') {
+                                                $doc_class = 'text-success';
+                                                $doc_tooltip = 'Verificação Documental: Aprovada ✓';
+                                            } elseif ($doc_verificado === 'failed') {
+                                                $doc_class = 'text-danger';
+                                                $doc_tooltip = 'Verificação Documental: Rejeitada ✗';
+                                            }
+                                            
+                                            // Ícone Facial
+                                            $face_class = 'text-secondary';
+                                            $face_tooltip = 'Verificação Facial: Não realizada';
+                                            if ($face_verificado === 'success') {
+                                                $face_class = 'text-success';
+                                                $face_tooltip = 'Verificação Facial: Aprovada ✓';
+                                            } elseif ($face_verificado === 'failed') {
+                                                $face_class = 'text-danger';
+                                                $face_tooltip = 'Verificação Facial: Rejeitada ✗';
+                                            }
+                                            ?>
+                                            <i class="bi bi-shield-check fs-3 <?= $doc_class ?>" 
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               title="<?= $doc_tooltip ?>"></i>
+                                            <i class="bi bi-person-check fs-3 <?= $face_class ?> ms-3" 
+                                               data-bs-toggle="tooltip" 
+                                               data-bs-placement="top" 
+                                               title="<?= $face_tooltip ?>"></i>
+                                        </div>
+                                        <div class="col-md-6 text-center">
+                                            <p class="mb-2"><strong>Ficha Completa:</strong></p>
+                                            <a href="cliente_edit.php?id=<?= $cliente['id'] ?>" 
+                                               class="btn btn-primary btn-sm" 
+                                               target="_blank">
+                                                <i class="bi bi-person-badge"></i> Ver Ficha do Cliente
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <hr>
                                     <div class="row mb-3">
                                         <div class="col-md-6">
                                             <p class="mb-2"><strong>Nome Completo:</strong><br><?= htmlspecialchars($cliente['nome_completo']) ?></p>

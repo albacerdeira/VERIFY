@@ -83,89 +83,46 @@ try {
     $error = $e->getMessage();
 }
 
+// Include do sistema de auditoria
+require_once 'includes/audit_logger.php';
+
 // Processa o formulário de edição
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        // Captura dados ANTIGOS para comparação
+        $dados_antigos = [
+            'nome_completo' => $cliente['nome_completo'],
+            'cpf' => $cliente['cpf'],
+            'email' => $cliente['email'],
+            'telefone' => $cliente['telefone']
+        ];
+        
+        // Captura dados NOVOS do formulário
         $nome = trim($_POST['nome_completo']);
         $cpf = trim($_POST['cpf']);
         $email = trim($_POST['email']);
-        $status = $_POST['status'] ?? $cliente['status'];
-        $nova_senha = trim($_POST['nova_senha']);
+        $telefone = trim($_POST['telefone']);
         
-        // Normaliza CPF para comparação (remove pontos, traços e espaços)
-        $cpf_normalizado = preg_replace('/[^0-9]/', '', $cpf);
-        $cpf_banco_normalizado = preg_replace('/[^0-9]/', '', $cliente['cpf'] ?? '');
+        $dados_novos = [
+            'nome_completo' => $nome,
+            'cpf' => $cpf,
+            'email' => $email,
+            'telefone' => $telefone
+        ];
         
-        // Normaliza email para comparação (remove espaços e converte para minúsculas)
-        $email_normalizado = strtolower(trim($email));
-        $email_banco_normalizado = strtolower(trim($cliente['email'] ?? ''));
-        
-        // Detecta se há mudanças em dados sensíveis (APENAS: nome, email, CPF, senha)
-        // STATUS NÃO REQUER VERIFICAÇÃO (ação administrativa)
-        $sensitive_data_changed = false;
-        $nome_changed = trim($nome) !== trim($cliente['nome_completo']);
-        $email_changed = $email_normalizado !== $email_banco_normalizado;
-        $cpf_changed = !empty($cpf_normalizado) && $cpf_normalizado !== $cpf_banco_normalizado;
-        $senha_changed = !empty($nova_senha);
-        // Só exige verificação se algum dos campos sensíveis mudou
-        if ($nome_changed || $email_changed || $cpf_changed || $senha_changed) {
-            $sensitive_data_changed = true;
-        }
-        
-    // DEBUG: Log para verificar as comparações (REMOVER EM PRODUÇÃO)
-    error_log("=== VERIFICAÇÃO DE MUDANÇAS ===");
-    error_log("Nome POST: '$nome' vs DB: '{$cliente['nome_completo']}' - Mudou: " . ($nome_changed ? 'SIM' : 'NÃO'));
-    error_log("Email POST: '$email_normalizado' vs DB: '$email_banco_normalizado' - Mudou: " . ($email_changed ? 'SIM' : 'NÃO'));
-    error_log("CPF POST: '$cpf_normalizado' vs DB: '$cpf_banco_normalizado' - Mudou: " . ($cpf_changed ? 'SIM' : 'NÃO'));
-    error_log("Nova senha vazia: " . ($senha_changed ? 'NÃO' : 'SIM'));
-    error_log("Dados sensíveis alterados: " . ($sensitive_data_changed ? 'SIM' : 'NÃO'));
-        
-        // Se dados sensíveis foram alterados, EXIGE verificação facial OU por documento
-        if ($sensitive_data_changed) {
-            $has_face_token = (
-                !empty($_POST['verification_token']) &&
-                !empty($_SESSION['face_verification_token']) &&
-                $_POST['verification_token'] === $_SESSION['face_verification_token'] &&
-                !empty($_SESSION['face_verification_expires']) &&
-                time() <= $_SESSION['face_verification_expires'] &&
-                $_SESSION['face_verification_cliente_id'] == $cliente_id
-            );
-            
-            $has_document_token = (
-                !empty($_POST['verification_token']) &&
-                !empty($_SESSION['document_verification_token']) &&
-                $_POST['verification_token'] === $_SESSION['document_verification_token'] &&
-                !empty($_SESSION['document_verification_expires']) &&
-                time() <= $_SESSION['document_verification_expires'] &&
-                $_SESSION['document_verification_cliente_id'] == $cliente_id
-            );
-            
-            if (!$has_face_token && !$has_document_token) {
-                throw new Exception('Verificação de identidade obrigatória para alteração de dados sensíveis (email, CPF, senha). Use selfie ou documento com foto.');
-            }
-            
-            // Limpa os tokens usados (uso único)
-            unset($_SESSION['face_verification_token']);
-            unset($_SESSION['face_verification_cliente_id']);
-            unset($_SESSION['face_verification_expires']);
-            unset($_SESSION['document_verification_token']);
-            unset($_SESSION['document_verification_cliente_id']);
-            unset($_SESSION['document_verification_expires']);
-        }
-
-        $params = [$nome, $cpf, $email, $status];
-        $sql = "UPDATE kyc_clientes SET nome_completo = ?, cpf = ?, email = ?, status = ?";
-
-        if (!empty($nova_senha)) {
-            $sql .= ", password = ?";
-            $params[] = password_hash($nova_senha, PASSWORD_DEFAULT);
-        }
+        // Admin/Analista pode editar livremente sem verificação facial/documental
+        // As verificações existem apenas como histórico/informação
+        $params = [$nome, $cpf, $email, $telefone];
+        $sql = "UPDATE kyc_clientes SET nome_completo = ?, cpf = ?, email = ?, telefone = ?";
 
         $sql .= " WHERE id = ?";
         $params[] = $cliente_id;
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+        
+        // REGISTRA LOG DE AUDITORIA
+        logAlteracaoCliente($pdo, $cliente_id, $dados_antigos, $dados_novos);
 
         $_SESSION['flash_message'] = "Dados do cliente atualizados com sucesso!";
         header('Location: cliente_edit.php?id=' . $cliente_id); // Recarrega a página para ver as alterações
@@ -386,7 +343,11 @@ error_reporting(E_ALL);
                 <div class="d-grid gap-2 mb-3">
                     <?php if (!empty($cliente['selfie_path'])): ?>
                     <button type="button" class="btn btn-success btn-sm" onclick="viewDocument('selfie')">
-                        <i class="bi bi-eye"></i> Ver Selfie
+                        <i class="bi bi-eye"></i> Ver Selfie Cadastrada
+                    </button>
+                    
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#faceVerificationModal">
+                        <i class="bi bi-camera-video"></i> Verificar Identidade (Selfie ao Vivo)
                     </button>
                     <?php endif; ?>
                     
@@ -398,7 +359,7 @@ error_reporting(E_ALL);
                     
                     <?php if (!empty($cliente['selfie_path']) && !empty($cliente['documento_foto_path'])): ?>
                     <button type="button" class="btn btn-primary btn-sm" onclick="verifyBothDocuments(event)">
-                        <i class="bi bi-shield-check"></i> Verificar Documentos
+                        <i class="bi bi-shield-check"></i> Verificar Documento Completo
                     </button>
                     <?php endif; ?>
                 </div>
@@ -413,7 +374,7 @@ error_reporting(E_ALL);
                         // Busca última verificação de documento
                         $stmt = $pdo->prepare("
                             SELECT * FROM document_verifications 
-                            WHERE cliente_id = ? AND verification_result = 'success'
+                            WHERE cliente_id = ?
                             ORDER BY created_at DESC LIMIT 1
                         ");
                         $stmt->execute([$cliente['id']]);
@@ -424,6 +385,9 @@ error_reporting(E_ALL);
                             $face_similarity = $verif_doc['face_similarity'] ?? 0;
                             $ocr_confidence = $verif_doc['ocr_confidence'] ?? 0;
                             $validation_percent = $verif_doc['validation_percent'] ?? 0;
+                            $doc_status = $verif_doc['verification_result'];
+                            
+                            if ($doc_status === 'success'):
                         ?>
                         <div class="alert alert-success mb-2 py-2 small">
                             <strong><i class="bi bi-check-circle-fill"></i> Aprovado</strong><br>
@@ -434,6 +398,17 @@ error_reporting(E_ALL);
                                 <?= date('d/m/Y H:i', strtotime($verif_doc['created_at'])) ?>
                             </small>
                         </div>
+                        <?php else: ?>
+                        <div class="alert alert-danger mb-2 py-2 small">
+                            <strong><i class="bi bi-x-circle-fill"></i> Rejeitado</strong><br>
+                            <small>
+                                Face: <?= number_format($face_similarity, 1) ?>% | 
+                                OCR: <?= number_format($ocr_confidence, 1) ?>% | 
+                                Validação: <?= number_format($validation_percent, 1) ?>%<br>
+                                <?= date('d/m/Y H:i', strtotime($verif_doc['created_at'])) ?>
+                            </small>
+                        </div>
+                        <?php endif; ?>
                         <?php else: ?>
                         <div class="alert alert-warning mb-0 py-2 small">
                             <i class="bi bi-exclamation-triangle"></i> Não verificado
@@ -458,16 +433,28 @@ error_reporting(E_ALL);
                         $stmt->execute([$cliente['id']]);
                         $verif_face = $stmt->fetch();
                         
-                        if ($verif_face && isset($verif_face['status']) && $verif_face['status'] === 'approved'):
+                        if ($verif_face):
                             $similaridade = $verif_face['similarity_score'] ?? 0;
+                            $face_status = $verif_face['verification_result'];
+                            
+                            if ($face_status === 'success'):
                         ?>
                         <div class="alert alert-success mb-0 py-2 small">
-                            <strong><i class="bi bi-check-circle-fill"></i> Verificado</strong><br>
+                            <strong><i class="bi bi-check-circle-fill"></i> Aprovado</strong><br>
                             <small>
-                                Similaridade: <?= number_format($similaridade, 2) ?>%<br>
+                                Similaridade: <?= number_format($similaridade, 1) ?>%<br>
                                 <?= date('d/m/Y H:i', strtotime($verif_face['created_at'])) ?>
                             </small>
                         </div>
+                        <?php else: ?>
+                        <div class="alert alert-danger mb-0 py-2 small">
+                            <strong><i class="bi bi-x-circle-fill"></i> Rejeitado</strong><br>
+                            <small>
+                                Similaridade: <?= number_format($similaridade, 1) ?>%<br>
+                                <?= date('d/m/Y H:i', strtotime($verif_face['created_at'])) ?>
+                            </small>
+                        </div>
+                        <?php endif; ?>
                         <?php else: ?>
                         <div class="alert alert-warning mb-0 py-2 small">
                             <i class="bi bi-exclamation-triangle"></i> Não verificado
@@ -986,233 +973,30 @@ function normalizeEmail(email) {
 // Monitora mudanças em campos sensíveis (APENAS: Nome, Email, CPF, Senha)
 // STATUS NÃO REQUER VERIFICAÇÃO
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== DOM CARREGADO ===');
-    
-    // Botão para abrir modal de documento
-    const btnOpenDocModal = document.getElementById('btn-open-doc-modal');
-    const docModalEl = document.getElementById('documentVerificationModal');
-    
-    console.log('Botão encontrado:', btnOpenDocModal ? 'SIM' : 'NÃO');
-    console.log('Modal encontrado:', docModalEl ? 'SIM' : 'NÃO');
-    
-    if (!btnOpenDocModal) {
-        console.error('ERRO: Botão btn-open-doc-modal NÃO encontrado!');
-        return;
-    }
-    
-    if (!docModalEl) {
-        console.error('ERRO: Modal documentVerificationModal NÃO encontrado!');
-        return;
-    }
-    
-    btnOpenDocModal.addEventListener('click', function(e) {
-        e.preventDefault();
-        console.log('>>> BOTÃO CLICADO! Tentando abrir modal...');
-        
-        // Método simples: remove classes que escondem o modal
-        docModalEl.classList.add('show', 'd-block');
-        docModalEl.style.display = 'block';
-        docModalEl.setAttribute('aria-modal', 'true');
-        docModalEl.setAttribute('role', 'dialog');
-        docModalEl.removeAttribute('aria-hidden');
-        
-        document.body.classList.add('modal-open');
-        document.body.style.overflow = 'hidden';
-        document.body.style.paddingRight = '0px';
-        
-        // Cria backdrop
-        let backdrop = document.getElementById('manual-backdrop');
-        if (!backdrop) {
-            backdrop = document.createElement('div');
-            backdrop.className = 'modal-backdrop fade show';
-            backdrop.id = 'manual-backdrop';
-            document.body.appendChild(backdrop);
-        }
-        
-        console.log('✅ Modal aberto manualmente!');
-    });
-    
-    // Adiciona botão de fechar no modal
-    const closeButtons = docModalEl.querySelectorAll('[data-bs-dismiss="modal"]');
-    closeButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            console.log('Fechando modal...');
-            docModalEl.classList.remove('show', 'd-block');
-            docModalEl.style.display = 'none';
-            docModalEl.setAttribute('aria-hidden', 'true');
-            docModalEl.removeAttribute('aria-modal');
-            docModalEl.removeAttribute('role');
-            
-            document.body.classList.remove('modal-open');
-            document.body.style.overflow = '';
-            document.body.style.paddingRight = '';
-            
-            const backdrop = document.getElementById('manual-backdrop');
-            if (backdrop) backdrop.remove();
-        });
-    });
-    
-    console.log('✅ Event listeners configurados!');
-    
-    const nomeInput = document.getElementById('nome_completo');
-    const emailInput = document.getElementById('email');
-    const cpfInput = document.getElementById('cpf');
-    const senhaInput = document.getElementById('nova_senha');
-    const alertBox = document.getElementById('verification-alert');
-    const verifiedBadge = document.getElementById('face-verified-badge');
-    
-    // Debug: Mostra valores originais ao carregar
-    console.log('=== VALORES ORIGINAIS ===');
-    console.log('Nome Original:', originalNome);
-    console.log('Email Original:', originalEmail);
-    console.log('CPF Original:', originalCpf);
-    console.log('Nome Input encontrado:', nomeInput ? 'SIM' : 'NÃO');
-    console.log('Email Input encontrado:', emailInput ? 'SIM' : 'NÃO');
-    console.log('CPF Input encontrado:', cpfInput ? 'SIM' : 'NÃO');
-    console.log('Senha Input encontrado:', senhaInput ? 'SIM' : 'NÃO');
-    console.log('Alert Box encontrado:', alertBox ? 'SIM' : 'NÃO');
-    console.log('Verified Badge encontrado:', verifiedBadge ? 'SIM' : 'NÃO');
-    
-    // Se não encontrou o alertBox, procura em toda a página
-    if (!alertBox) {
-        console.error('ERRO: Alert Box NÃO foi encontrado! ID esperado: verification-alert');
-        console.log('Procurando por classe "alert" na página...');
-        const alerts = document.querySelectorAll('.alert');
-        console.log('Total de elementos com classe "alert":', alerts.length);
-        alerts.forEach((alert, index) => {
-            console.log(`Alert ${index}:`, alert.id, alert.className);
+    // Event listeners para o modal de verificação facial
+    const faceModalEl = document.getElementById('faceVerificationModal');
+    if (faceModalEl) {
+        faceModalEl.addEventListener('shown.bs.modal', function() {
+            console.log('Modal de verificação facial aberto - Iniciando câmera...');
+            startCamera();
         });
         
-        // Cria o alerta dinamicamente se não existir
-        console.log('Tentando criar o alerta dinamicamente...');
-        const form = document.querySelector('form');
-        if (form) {
-            const newAlert = document.createElement('div');
-            newAlert.id = 'verification-alert';
-            newAlert.className = 'alert alert-warning mb-3';
-            newAlert.style.display = 'none';
-            newAlert.innerHTML = `
-                <i class="bi bi-shield-exclamation"></i>
-                <strong>Atenção:</strong> Você está alterando dados sensíveis (Nome, Email, CPF ou Senha).
-                <br><strong>Verificação de identidade obrigatória!</strong>
-                <br><small class="text-muted">Obs: Mudança de Status NÃO requer verificação (ação administrativa)</small>
-                <div class="mt-3">
-                    <p class="mb-2 fw-bold">Escolha o método de verificação:</p>
-                    <div class="btn-group d-flex gap-2" role="group">
-                        <button type="button" class="btn btn-warning flex-fill" onclick="openFaceVerificationModal()">
-                            <i class="bi bi-camera-fill"></i> Selfie Simples
-                        </button>
-                        <button type="button" class="btn btn-primary flex-fill" onclick="openDocumentVerificationModal()">
-                            <i class="bi bi-file-earmark-person"></i> Documento com Foto
-                        </button>
-                    </div>
-                    <small class="text-muted d-block mt-2">
-                        <i class="bi bi-info-circle"></i> 
-                        <strong>Documento com Foto:</strong> Valida nome, CPF, RG e compara a foto do documento (mais seguro)
-                    </small>
-                </div>
-            `;
-            
-            // Insere antes do botão de submit
-            const submitBtn = form.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.parentNode.insertBefore(newAlert, submitBtn);
-                console.log('✅ Alerta criado dinamicamente e inserido no formulário!');
-                // Agora procura o alerta novamente
-                const newAlertBox = document.getElementById('verification-alert');
-                if (newAlertBox) {
-                    console.log('✅ Alerta encontrado após criação!');
-                    setupVerificationListeners(newAlertBox);
-                }
-            }
-        }
-        return;
+        faceModalEl.addEventListener('hidden.bs.modal', function() {
+            console.log('Modal de verificação facial fechado - Parando câmera...');
+            stopCamera();
+            // Reseta o estado do modal
+            document.getElementById('camera-container').style.display = 'block';
+            document.getElementById('preview-container').style.display = 'none';
+            document.getElementById('verification-loader').style.display = 'none';
+            document.getElementById('verification-status').classList.add('d-none');
+        });
     }
-    
-    setupVerificationListeners(alertBox);
 });
-
-function setupVerificationListeners(alertBox) {
-    const nomeInput = document.getElementById('nome_completo');
-    const emailInput = document.getElementById('email');
-    const cpfInput = document.getElementById('cpf');
-    const senhaInput = document.getElementById('nova_senha');
-    const verifiedBadge = document.getElementById('face-verified-badge');
-    
-    function checkSensitiveChanges() {
-        const nomeChanged = nomeInput.value.trim() !== originalNome;
-        const emailChanged = normalizeEmail(emailInput.value) !== originalEmail;
-        const cpfChanged = normalizeCpf(cpfInput.value) !== originalCpf;
-        const senhaChanged = senhaInput.value.trim() !== '';
-        
-        const sensitiveChanged = nomeChanged || emailChanged || cpfChanged || senhaChanged;
-        
-        console.log('=== CHECK SENSITIVE CHANGES (JS) ===');
-        console.log('Nome:', nomeInput.value.trim(), 'vs', originalNome, '- Changed:', nomeChanged);
-        console.log('Email:', normalizeEmail(emailInput.value), 'vs', originalEmail, '- Changed:', emailChanged);
-        console.log('CPF:', normalizeCpf(cpfInput.value), 'vs', originalCpf, '- Changed:', cpfChanged);
-        console.log('Senha não vazia:', senhaChanged);
-        console.log('Sensitive Changed:', sensitiveChanged);
-        console.log('Alert Box classes ANTES:', alertBox.className);
-        
-        if (sensitiveChanged) {
-            console.log('>>> MOSTRANDO ALERTA DE VERIFICAÇÃO');
-            alertBox.classList.remove('d-none');
-            alertBox.style.display = 'block'; // Força mostrar
-            
-            // Se ainda não verificou, mostra alerta
-            if (!document.getElementById('verification_token').value) {
-                if (verifiedBadge) verifiedBadge.classList.add('d-none');
-            }
-        } else {
-            console.log('>>> ESCONDENDO ALERTA DE VERIFICAÇÃO');
-            alertBox.classList.add('d-none');
-            alertBox.style.display = 'none';
-            if (verifiedBadge) verifiedBadge.classList.add('d-none');
-        }
-        
-        console.log('Alert Box classes DEPOIS:', alertBox.className);
-        console.log('Alert Box display:', alertBox.style.display);
-    }
-    
-    // Checa imediatamente ao carregar (caso já tenha algo digitado)
-    checkSensitiveChanges();
-    
-    nomeInput.addEventListener('input', checkSensitiveChanges);
-    emailInput.addEventListener('input', checkSensitiveChanges);
-    cpfInput.addEventListener('input', checkSensitiveChanges);
-    senhaInput.addEventListener('input', checkSensitiveChanges);
-    
-    // Valida formulário antes de enviar
-    document.querySelector('form').addEventListener('submit', function(e) {
-        const nomeChanged = nomeInput.value.trim() !== originalNome;
-        const emailChanged = normalizeEmail(emailInput.value) !== originalEmail;
-        const cpfChanged = normalizeCpf(cpfInput.value) !== originalCpf;
-        const senhaChanged = senhaInput.value.trim() !== '';
-        const sensitiveChanged = nomeChanged || emailChanged || cpfChanged || senhaChanged;
-        
-        if (sensitiveChanged && !document.getElementById('verification_token').value) {
-            e.preventDefault();
-            alert('Você precisa verificar sua identidade antes de salvar alterações em dados sensíveis (Nome, Email, CPF ou Senha)!\n\nStatus NÃO requer verificação.');
-            openFaceVerificationModal();
-            return false;
-        }
-    });
-}
 
 function openFaceVerificationModal() {
     const modal = new bootstrap.Modal(document.getElementById('faceVerificationModal'));
     modal.show();
-    
-    // Inicia câmera quando o modal abrir
-    document.getElementById('faceVerificationModal').addEventListener('shown.bs.modal', function() {
-        startCamera();
-    });
-    
-    // Para câmera quando fechar
-    document.getElementById('faceVerificationModal').addEventListener('hidden.bs.modal', function() {
-        stopCamera();
-    });
+    // Câmera será iniciada pelo event listener 'shown.bs.modal'
 }
 
 function startCamera() {
@@ -1377,27 +1161,22 @@ function verifyFace() {
             loader.style.display = 'none';
             
             if (data.success) {
-                // Salva token no campo oculto
-                document.getElementById('verification_token').value = data.verification_token;
-                
                 // Mostra sucesso
-                showStatus('success', data.message);
+                const similarity = data.similarity_score || data.similarity || 0;
+                showStatus('success', `✅ Verificação Facial Aprovada!\n\nSimilaridade: ${similarity.toFixed(2)}%\n\n${data.message || 'Identidade confirmada!'}`);
                 
-                // Mostra badge de verificado
-                const faceVerifiedBadge = document.getElementById('face-verified-badge');
-                const faceVerificationAlert = document.getElementById('face-verification-alert');
-                
-                if (faceVerifiedBadge) {
-                    faceVerifiedBadge.classList.remove('d-none');
-                }
-                if (faceVerificationAlert) {
-                    faceVerificationAlert.classList.add('d-none');
-                }
-                
-                // Fecha modal após 2 segundos
+                // Fecha modal e recarrega após 3 segundos
                 setTimeout(function() {
-                    bootstrap.Modal.getInstance(document.getElementById('faceVerificationModal')).hide();
-                }, 2000);
+                    const modalEl = document.getElementById('faceVerificationModal');
+                    if (modalEl) {
+                        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                        if (modalInstance) {
+                            modalInstance.hide();
+                        }
+                    }
+                    // Recarrega página para mostrar verificação atualizada
+                    location.reload();
+                }, 3000);
             } else {
                 showStatus('error', data.message);
                 document.getElementById('preview-container').style.display = 'block';

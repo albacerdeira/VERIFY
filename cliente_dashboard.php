@@ -28,7 +28,7 @@ if (isset($pdo)) {
         // Tenta primeiro com lead_id, se falhar usa query sem JOIN
         try {
             $stmt_cliente = $pdo->prepare(
-                'SELECT kc.*, l.nome as lead_nome, l.data_criacao as lead_data_criacao ' .
+                'SELECT kc.*, l.nome as lead_nome, l.created_at as lead_data_criacao ' .
                 'FROM kyc_clientes kc ' .
                 'LEFT JOIN leads l ON kc.lead_id = l.id ' .
                 'WHERE kc.id = ?'
@@ -45,8 +45,13 @@ if (isset($pdo)) {
                 ];
             }
         } catch (PDOException $e_lead) {
-            // Coluna lead_id não existe ainda - ignora erro e continua
+            // Coluna lead_id não existe ainda - busca dados do cliente sem JOIN
             error_log("INFO: Coluna lead_id não existe em kyc_clientes. Execute add_lead_id_to_kyc_clientes.sql");
+            
+            // Busca dados do cliente sem o JOIN
+            $stmt_cliente = $pdo->prepare('SELECT * FROM kyc_clientes WHERE id = ?');
+            $stmt_cliente->execute([$cliente_id]);
+            $cliente_info = $stmt_cliente->fetch(PDO::FETCH_ASSOC);
         }
         
         // Busca o status da última submissão do cliente usando o ID do cliente.
@@ -229,14 +234,22 @@ $logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
 
     <main class="dashboard-container">
         <div class="row justify-content-center">
-            <div class="col-md-8">
+            <div class="col-md-10">
+                <?php if (isset($_SESSION['flash_message'])): ?>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($_SESSION['flash_message']) ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <?php unset($_SESSION['flash_message']); ?>
+                <?php endif; ?>
+                
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
                 <?php else: ?>
                     
                     <?php if ($lead_origem): ?>
                     <!-- Informação de Origem Lead -->
-                    <div class="alert alert-info mb-3">
+                    <div class="alert alert-info mb-4">
                         <i class="bi bi-info-circle-fill"></i> 
                         <strong>Bem-vindo!</strong> Seu cadastro foi iniciado a partir de um lead registrado em 
                         <?= date('d/m/Y', strtotime($lead_origem['data_criacao'])) ?>.
@@ -244,27 +257,230 @@ $logo_url_final = htmlspecialchars($logo_url) . $logo_cache_buster;
                     </div>
                     <?php endif; ?>
                     
-                    <div class="card shadow-sm">
-                        <div class="card-header text-center"><h4 class="mb-0">Status do seu Cadastro KYC</h4></div>
-                        <div class="card-body text-center p-4"><?php if (!$kyc_status): ?>
-                                <p class="card-title">Nenhum cadastro iniciado</p>
-                                <p class="text-muted">Você ainda não iniciou seu processo de cadastro. Clique no botão abaixo para começar.</p>
-                                <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-sm mt-3">Iniciar Cadastro KYC</a>
-                            <?php else: ?>
-                                <p class="card-title-centered">Seu status atual é: 
-                                    <span class="status-badge status-<?= strtolower(str_replace(' ', '-', htmlspecialchars($kyc_status))) ?>">
-                                        <?= htmlspecialchars($kyc_status) ?>
-                                    </span>
-                                </p>
-                                <?php if ($kyc_status === 'Em Preenchimento'): ?>
-                                    <p class="text-muted mt-3">Você já iniciou seu cadastro. Continue de onde parou.</p>
-                                    <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary btn-sm mt-3">Continuar Preenchimento</a>
-                                <?php else: ?>
-                                    <p class="text-muted mt-3">Nossa equipe está analisando suas informações. Qualquer novidade, entraremos em contato por e-mail.</p>
-                                <?php endif; ?>
-                            <?php endif; ?>
+                    <!-- Título com Progresso -->
+                    <div class="text-center mb-4">
+                        <h3 class="mb-3">Complete seu Cadastro</h3>
+                        <?php
+                        $dados_pessoais_ok = isset($cliente_info) && $cliente_info['dados_completos_preenchidos'];
+                        $tem_empresa = !empty($kyc_status);
+                        $total_passos = 2;
+                        $passos_completos = ($dados_pessoais_ok ? 1 : 0) + ($tem_empresa ? 1 : 0);
+                        $progresso_percent = ($passos_completos / $total_passos) * 100;
+                        ?>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div class="progress-bar bg-success progress-bar-striped <?= $progresso_percent < 100 ? 'progress-bar-animated' : '' ?>" 
+                                 role="progressbar" 
+                                 style="width: <?= $progresso_percent ?>%"
+                                 aria-valuenow="<?= $progresso_percent ?>" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                <strong><?= $passos_completos ?> de <?= $total_passos ?> passos concluídos (<?= round($progresso_percent) ?>%)</strong>
+                            </div>
+                        </div>
+                        <?php if ($progresso_percent === 100): ?>
+                            <p class="text-success mb-0">
+                                <i class="bi bi-trophy-fill"></i> <strong>Parabéns! Você completou todos os passos!</strong> 🎉
+                            </p>
+                        <?php else: ?>
+                            <p class="text-muted mb-0">Complete os passos abaixo para finalizar seu cadastro</p>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Cards de Passos -->
+                    <div class="row">
+                        <!-- PASSO 1: Dados Pessoais -->
+                        <div class="col-md-6 mb-4">
+                            <div class="card shadow-sm h-100 <?= $dados_pessoais_ok ? 'border-success' : 'border-warning' ?>" style="border-width: 2px;">
+                                <div class="card-header text-white text-center <?= $dados_pessoais_ok ? 'bg-success' : 'bg-warning text-dark' ?>">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="badge bg-light text-dark">Passo 1</span>
+                                        <?php if ($dados_pessoais_ok): ?>
+                                            <i class="bi bi-check-circle-fill fs-4"></i>
+                                        <?php else: ?>
+                                            <i class="bi bi-exclamation-circle-fill fs-4"></i>
+                                        <?php endif; ?>
+                                    </div>
+                                    <h5 class="mb-0 mt-2"><i class="bi bi-person-vcard"></i> Meus Dados Pessoais</h5>
+                                </div>
+                                <div class="card-body">
+                                    <?php if ($dados_pessoais_ok): ?>
+                                        <div class="alert alert-success mb-3">
+                                            <i class="bi bi-check-circle-fill"></i> <strong>Completo!</strong>
+                                        </div>
+                                        <ul class="list-unstyled mb-3">
+                                            <li class="mb-2"><i class="bi bi-check text-success"></i> Documento enviado</li>
+                                            <li class="mb-2"><i class="bi bi-check text-success"></i> Filiação cadastrada</li>
+                                            <li class="mb-2"><i class="bi bi-check text-success"></i> Data de nascimento</li>
+                                            <li class="mb-2"><i class="bi bi-check text-success"></i> Endereço completo</li>
+                                        </ul>
+                                        <a href="cliente_dados_pessoais.php" class="btn btn-outline-success w-100">
+                                            <i class="bi bi-pencil"></i> Atualizar Dados
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="alert alert-warning mb-3">
+                                            <i class="bi bi-exclamation-triangle-fill"></i> <strong>Pendente</strong>
+                                        </div>
+                                        <p class="text-muted mb-3">Complete seus dados pessoais:</p>
+                                        <ul class="list-unstyled mb-3">
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Foto do documento (RG ou CNH)</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Nome do pai e da mãe</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Data de nascimento</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Endereço completo</li>
+                                        </ul>
+                                        <a href="cliente_dados_pessoais.php" class="btn btn-warning w-100 text-dark">
+                                            <i class="bi bi-plus-circle"></i> Completar Agora
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PASSO 2: Dados da Empresa -->
+                        <div class="col-md-6 mb-4">
+                            <div class="card shadow-sm h-100 <?= $tem_empresa ? 'border-success' : 'border-primary' ?>" style="border-width: 2px;">
+                                <div class="card-header text-white text-center <?= $tem_empresa ? 'bg-success' : 'bg-primary' ?>">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="badge bg-light text-dark">Passo 2</span>
+                                        <?php if ($tem_empresa): ?>
+                                            <i class="bi bi-check-circle-fill fs-4"></i>
+                                        <?php else: ?>
+                                            <i class="bi bi-building fs-4"></i>
+                                        <?php endif; ?>
+                                    </div>
+                                    <h5 class="mb-0 mt-2"><i class="bi bi-building-check"></i> Dados da Empresa</h5>
+                                </div>
+                                <div class="card-body">
+                                    <?php if ($tem_empresa): ?>
+                                        <div class="alert alert-success mb-3">
+                                            <i class="bi bi-check-circle-fill"></i> <strong>Cadastro Iniciado!</strong>
+                                        </div>
+                                        <p class="mb-2"><strong>Status Atual:</strong></p>
+                                        <div class="text-center mb-3">
+                                            <span class="status-badge status-<?= strtolower(str_replace(' ', '-', htmlspecialchars($kyc_status))) ?> fs-6">
+                                                <?= htmlspecialchars($kyc_status) ?>
+                                            </span>
+                                        </div>
+                                        
+                                        <?php if ($kyc_status === 'Em Preenchimento'): ?>
+                                            <p class="text-muted mb-3">Continue preenchendo os dados da sua empresa.</p>
+                                            <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary w-100 mb-2">
+                                                <i class="bi bi-pencil"></i> Continuar Preenchimento
+                                            </a>
+                                        <?php elseif ($kyc_status === 'Aprovado'): ?>
+                                            <p class="text-success mb-3"><i class="bi bi-check-circle-fill"></i> Empresa aprovada!</p>
+                                        <?php else: ?>
+                                            <p class="text-muted mb-3">Nossa equipe está analisando suas informações.</p>
+                                        <?php endif; ?>
+                                        
+                                        <hr>
+                                        <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-outline-primary w-100">
+                                            <i class="bi bi-plus-circle"></i> Adicionar Outra Empresa
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="alert alert-info mb-3">
+                                            <i class="bi bi-info-circle-fill"></i> <strong>Pronto para começar</strong>
+                                        </div>
+                                        <p class="text-muted mb-3">Cadastre os dados da sua empresa para análise KYC:</p>
+                                        <ul class="list-unstyled mb-3">
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Dados da empresa (CNPJ, Razão Social)</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Documentos corporativos</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Informações dos sócios</li>
+                                            <li class="mb-2"><i class="bi bi-circle text-muted"></i> Dados bancários</li>
+                                        </ul>
+                                        <a href="kyc_form.php<?= $slug_contexto ? '?cliente=' . htmlspecialchars($slug_contexto) : '' ?>" class="btn btn-primary w-100">
+                                            <i class="bi bi-building-add"></i> Cadastrar Empresa
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Lista de Empresas Cadastradas -->
+                    <?php
+                    // Busca todas as empresas do cliente
+                    try {
+                        $stmt_empresas = $pdo->prepare("
+                            SELECT id, razao_social, cnpj, status, data_criacao, data_atualizacao
+                            FROM kyc_empresas 
+                            WHERE cliente_id = ? 
+                            ORDER BY data_criacao DESC
+                        ");
+                        $stmt_empresas->execute([$cliente_id]);
+                        $empresas = $stmt_empresas->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        $empresas = [];
+                    }
+                    
+                    if (!empty($empresas)): ?>
+                    <div class="card shadow-sm mt-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="bi bi-building"></i> Minhas Empresas Cadastradas
+                                <span class="badge bg-primary"><?= count($empresas) ?></span>
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Razão Social</th>
+                                            <th>CNPJ</th>
+                                            <th>Status</th>
+                                            <th>Cadastro</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($empresas as $emp): 
+                                            // Define classe do badge de status
+                                            switch($emp['status']) {
+                                                case 'aprovado':
+                                                    $status_class = 'success';
+                                                    break;
+                                                case 'pendente':
+                                                    $status_class = 'warning';
+                                                    break;
+                                                case 'em_analise':
+                                                    $status_class = 'info';
+                                                    break;
+                                                case 'reprovado':
+                                                    $status_class = 'danger';
+                                                    break;
+                                                default:
+                                                    $status_class = 'secondary';
+                                            }
+                                        ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($emp['razao_social']) ?></strong></td>
+                                            <td><code><?= htmlspecialchars($emp['cnpj']) ?></code></td>
+                                            <td>
+                                                <span class="badge bg-<?= $status_class ?>">
+                                                    <?= ucfirst(str_replace('_', ' ', $emp['status'])) ?>
+                                                </span>
+                                            </td>
+                                            <td><?= date('d/m/Y', strtotime($emp['data_criacao'])) ?></td>
+                                            <td>
+                                                <a href="kyc_form.php?empresa_id=<?= $emp['id'] ?><?= $slug_contexto ? '&cliente=' . htmlspecialchars($slug_contexto) : '' ?>" 
+                                                   class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-eye"></i> Ver
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                    
                 <?php endif; ?>
             </div>
         </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -641,24 +641,34 @@ try {
                     <!-- Resumo Inferior -->
                     <div class="row mt-4 pt-4 border-top">
                         <div class="col-md-3 text-center">
-                            <div class="p-3 bg-light rounded">
+                            <div class="p-3 bg-light rounded" style="min-height: 140px; display: flex; flex-direction: column; justify-content: center;">
                                 <h6 class="text-muted mb-2">Total de Leads</h6>
                                 <h3 class="mb-0"><?= number_format($total_leads, 0, ',', '.') ?></h3>
                             </div>
                         </div>
                         <div class="col-md-3 text-center">
-                            <div class="p-3 bg-light rounded">
+                            <div class="p-3 bg-light rounded" style="min-height: 140px; display: flex; flex-direction: column; justify-content: center;">
                                 <h6 class="text-muted mb-2">Leads Perdidos</h6>
-                                <h3 class="mb-0 text-danger"><?= number_format($leads_stats['perdido'], 0, ',', '.') ?></h3>
+                                <?php 
+                                    // Soma: leads perdidos + KYCs reprovados
+                                    // Nota: Pode haver duplicação se um lead perdido virou cliente e foi reprovado no KYC
+                                    // mas não temos campo de vinculação na tabela leads
+                                    $total_perdidos = $leads_stats['perdido'] + ($kyc_por_status['Reprovado'] ?? 0);
+                                ?>
+                                <h3 class="mb-0 text-danger"><?= number_format($total_perdidos, 0, ',', '.') ?></h3>
                                 <?php if ($total_leads > 0): 
-                                    $percent_perdido = ($leads_stats['perdido'] / $total_leads) * 100;
+                                    $percent_perdido = ($total_perdidos / $total_leads) * 100;
                                 ?>
                                 <small class="text-muted"><?= number_format($percent_perdido, 1) ?>%</small>
                                 <?php endif; ?>
+                                <small class="d-block text-muted mt-1" style="font-size: 0.75rem;">
+                                    <i class="bi bi-funnel"></i> <?= $leads_stats['perdido'] ?> leads + 
+                                    <i class="bi bi-x-circle"></i> <?= $kyc_por_status['Reprovado'] ?? 0 ?> KYCs
+                                </small>
                             </div>
                         </div>
                         <div class="col-md-3 text-center">
-                            <div class="p-3 bg-light rounded">
+                            <div class="p-3 bg-light rounded" style="min-height: 140px; display: flex; flex-direction: column; justify-content: center;">
                                 <h6 class="text-muted mb-2">Em Processo</h6>
                                 <?php $em_processo = $leads_stats['contatado'] + $leads_stats['qualificado'] + $total_em_registro + $total_em_analise; ?>
                                 <h3 class="mb-0 text-primary"><?= number_format($em_processo, 0, ',', '.') ?></h3>
@@ -670,7 +680,7 @@ try {
                             </div>
                         </div>
                         <div class="col-md-3 text-center">
-                            <div class="p-3 bg-success bg-opacity-10 rounded border border-success">
+                            <div class="p-3 bg-success bg-opacity-10 rounded border border-success" style="min-height: 140px; display: flex; flex-direction: column; justify-content: center;">
                                 <h6 class="text-success mb-2"><i class="bi bi-trophy-fill"></i> Taxa de Sucesso</h6>
                                 <h3 class="mb-0 text-success"><?= $taxa_conversao ?>%</h3>
                                 <small class="text-muted">Lead → Cliente</small>

@@ -78,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cor_variavel = trim($_POST['cor_variavel']);
         $google_tag_manager_id = trim($_POST['google_tag_manager_id']);
         $website_url = trim($_POST['website_url']);
+        $rd_station_token = trim($_POST['rd_station_token'] ?? '');
         $logo_path = $_POST['current_logo'] ?? '';
         $slug = $_POST['slug'] ?? ''; 
 
@@ -92,8 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else { throw new Exception("Falha ao mover o arquivo de logo enviado."); }
             }
 
-            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id, website_url = :website";
-            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':website' => $website_url, ':id' => $empresa_id_post];
+            $sql = "UPDATE configuracoes_whitelabel SET nome_empresa = :nome, logo_url = :logo, cor_variavel = :cor, google_tag_manager_id = :gtm_id, website_url = :website, rd_station_token = :rd_token";
+            $params = [':nome' => $nome_empresa, ':logo' => $logo_path, ':cor' => $cor_variavel, ':gtm_id' => $google_tag_manager_id, ':website' => $website_url, ':rd_token' => $rd_station_token, ':id' => $empresa_id_post];
 
             if ($is_superadmin || empty($config_atual['slug'])) {
                 if (empty($slug)) throw new Exception("O campo Slug é obrigatório.");
@@ -241,6 +242,19 @@ if ($is_superadmin && !$empresa_id_para_editar) {
                     <div class="form-group mb-3">
                         <label for="google_tag_manager_id">ID do Google Tag Manager</label>
                         <input type="text" class="form-control" id="google_tag_manager_id" name="google_tag_manager_id" value="<?= htmlspecialchars($config['google_tag_manager_id'] ?? '') ?>" placeholder="GTM-XXXXXX">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="rd_station_token" class="form-label">
+                            <i class="bi bi-broadcast"></i> Token RD Station
+                        </label>
+                        <input type="text" class="form-control" id="rd_station_token" name="rd_station_token" 
+                               value="<?= htmlspecialchars($config['rd_station_token'] ?? '') ?>" 
+                               placeholder="Seu token de integração RD Station">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i> Token de API para integração com RD Station Marketing. 
+                            Obtenha o token nas configurações da sua conta RD Station.
+                        </small>
                     </div>
 
                     <button type="submit" class="btn btn-primary mt-3">Salvar Configurações</button>

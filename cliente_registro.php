@@ -190,6 +190,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $codigo_expira_em = (new DateTime('+24 hours'))->format('Y-m-d H:i:s');
         $hash_senha = password_hash($senha, PASSWORD_DEFAULT);
 
+        // ==================================================
+        // FALLBACK INTELIGENTE: Busca lead_id se não veio na URL
+        // ==================================================
+        // Estratégia:
+        // 1. Se tem lead_id na URL (?lead_id=X) → usa direto (melhor cenário)
+        // 2. Se NÃO tem lead_id → tenta encontrar lead por email + empresa
+        // 3. Se não encontrar lead → cria cliente normal sem vínculo
+        
+        if (!$lead_id_contexto) {
+            error_log("=== FALLBACK: Buscando lead por email + empresa ===");
+            error_log("Email: $email");
+            error_log("id_empresa_master_contexto: " . ($id_empresa_master_contexto ?? 'NULL'));
+            
+            // Tenta encontrar um lead com este email nesta empresa
+            if ($id_empresa_master_contexto) {
+                $stmt_find_lead = $pdo->prepare("
+                    SELECT id, status 
+                    FROM leads 
+                    WHERE email = ? 
+                    AND id_empresa_master = ? 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ");
+                $stmt_find_lead->execute([$email, $id_empresa_master_contexto]);
+                $found_lead = $stmt_find_lead->fetch(PDO::FETCH_ASSOC);
+                
+                if ($found_lead) {
+                    $lead_id_contexto = $found_lead['id'];
+                    error_log("✓ FALLBACK: Lead encontrado! ID: {$lead_id_contexto} (Status: {$found_lead['status']})");
+                    
+                    // Atualiza status do lead para 'convertido'
+                    $stmt_update_lead = $pdo->prepare("UPDATE leads SET status = 'convertido', updated_at = NOW() WHERE id = ?");
+                    $stmt_update_lead->execute([$lead_id_contexto]);
+                    
+                    // Registra no histórico
+                    $stmt_hist_fallback = $pdo->prepare("
+                        INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
+                        VALUES (?, NULL, 'convertido', 'Lead convertido para cliente via fallback (email + empresa)', NOW())
+                    ");
+                    $stmt_hist_fallback->execute([$lead_id_contexto]);
+                } else {
+                    error_log("⚠ FALLBACK: Nenhum lead encontrado para este email nesta empresa");
+                }
+            } else {
+                // Sem empresa definida, tenta buscar globalmente
+                $stmt_find_lead_global = $pdo->prepare("
+                    SELECT id, status 
+                    FROM leads 
+                    WHERE email = ? 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ");
+                $stmt_find_lead_global->execute([$email]);
+                $found_lead_global = $stmt_find_lead_global->fetch(PDO::FETCH_ASSOC);
+                
+                if ($found_lead_global) {
+                    $lead_id_contexto = $found_lead_global['id'];
+                    error_log("✓ FALLBACK GLOBAL: Lead encontrado! ID: {$lead_id_contexto} (Status: {$found_lead_global['status']})");
+                    
+                    // Atualiza status
+                    $stmt_update_lead = $pdo->prepare("UPDATE leads SET status = 'convertido', updated_at = NOW() WHERE id = ?");
+                    $stmt_update_lead->execute([$lead_id_contexto]);
+                    
+                    // Registra no histórico
+                    $stmt_hist_fallback = $pdo->prepare("
+                        INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
+                        VALUES (?, NULL, 'convertido', 'Lead convertido para cliente via fallback global (email)', NOW())
+                    ");
+                    $stmt_hist_fallback->execute([$lead_id_contexto]);
+                } else {
+                    error_log("⚠ FALLBACK: Nenhum lead encontrado para este email");
+                }
+            }
+        } else {
+            error_log("✓ DIRETO: lead_id já veio na URL: {$lead_id_contexto}");
+            
+            // Atualiza status do lead para 'convertido' quando vem da URL
+            try {
+                $stmt_update_lead_url = $pdo->prepare("UPDATE leads SET status = 'convertido', updated_at = NOW() WHERE id = ?");
+                $stmt_update_lead_url->execute([$lead_id_contexto]);
+                
+                $stmt_hist_url = $pdo->prepare("
+                    INSERT INTO leads_historico (lead_id, usuario_id, acao, descricao, created_at)
+                    VALUES (?, NULL, 'convertido', 'Lead convertido para cliente via link direto', NOW())
+                ");
+                $stmt_hist_url->execute([$lead_id_contexto]);
+            } catch (Exception $e) {
+                error_log("Erro ao atualizar status do lead: " . $e->getMessage());
+            }
+        }
+        
         // --- CORREÇÃO: Alterado de 'whitelabel_parceiro_id' para 'id_empresa_master' ---
         // IMPORTANTE: Inclui lead_id para fazer a associação Lead → Cliente (se a coluna existir)
         

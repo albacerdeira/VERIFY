@@ -17,12 +17,22 @@ try {
     if ($is_superadmin) {
         // Superadmin vê todos os clientes e a qual empresa pertencem
         $stmt = $pdo->query(
-            "SELECT kc.id, kc.nome_completo, kc.email, kc.cpf, kc.status, kc.email_verificado, kc.created_at, e.nome AS empresa_parceira\n             FROM kyc_clientes kc\n             LEFT JOIN empresas e ON kc.id_empresa_master = e.id\n             ORDER BY kc.created_at DESC"
+            "SELECT kc.id, kc.nome_completo, kc.email, kc.cpf, kc.status, kc.email_verificado, kc.created_at, e.nome AS empresa_parceira,
+                    (SELECT verification_result FROM document_verifications WHERE cliente_id = kc.id ORDER BY created_at DESC LIMIT 1) as doc_verificado,
+                    (SELECT verification_result FROM facial_verifications WHERE cliente_id = kc.id ORDER BY created_at DESC LIMIT 1) as face_verificado
+             FROM kyc_clientes kc
+             LEFT JOIN empresas e ON kc.id_empresa_master = e.id
+             ORDER BY kc.created_at DESC"
         );
     } else {
         // Admin e Analista veem apenas os clientes da sua empresa
         $stmt = $pdo->prepare(
-            "SELECT id, nome_completo, email, cpf, status, email_verificado, created_at \n             FROM kyc_clientes \n             WHERE id_empresa_master = ?\n             ORDER BY created_at DESC"
+            "SELECT kc.id, kc.nome_completo, kc.email, kc.cpf, kc.status, kc.email_verificado, kc.created_at,
+                    (SELECT verification_result FROM document_verifications WHERE cliente_id = kc.id ORDER BY created_at DESC LIMIT 1) as doc_verificado,
+                    (SELECT verification_result FROM facial_verifications WHERE cliente_id = kc.id ORDER BY created_at DESC LIMIT 1) as face_verificado
+             FROM kyc_clientes kc
+             WHERE kc.id_empresa_master = ?
+             ORDER BY kc.created_at DESC"
         );
         $stmt->execute([$user_empresa_id]);
     }
@@ -46,6 +56,7 @@ try {
                     <th scope="col">CPF</th>
                     <th scope="col">Status</th>
                     <th scope="col">Email Verificado</th>
+                    <th scope="col">Verificações</th>
                     <?php if ($is_superadmin): ?>
                         <th scope="col">Empresa Parceira</th>
                     <?php endif; ?>
@@ -68,6 +79,39 @@ try {
                                 <?php else: ?>
                                     <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> Pendente</span>
                                 <?php endif; ?>
+                            </td>
+                            <td class="text-center">
+                                <?php
+                                // Verificação Documental
+                                $doc_class = 'text-secondary';
+                                $doc_tooltip = 'Verificação Documental: Não realizada';
+                                if ($cliente['doc_verificado'] === 'success') {
+                                    $doc_class = 'text-success';
+                                    $doc_tooltip = 'Verificação Documental: Aprovada ✓';
+                                } elseif ($cliente['doc_verificado'] === 'failed') {
+                                    $doc_class = 'text-danger';
+                                    $doc_tooltip = 'Verificação Documental: Rejeitada ✗';
+                                }
+                                
+                                // Verificação Facial
+                                $face_class = 'text-secondary';
+                                $face_tooltip = 'Verificação Facial: Não realizada';
+                                if ($cliente['face_verificado'] === 'success') {
+                                    $face_class = 'text-success';
+                                    $face_tooltip = 'Verificação Facial: Aprovada ✓';
+                                } elseif ($cliente['face_verificado'] === 'failed') {
+                                    $face_class = 'text-danger';
+                                    $face_tooltip = 'Verificação Facial: Rejeitada ✗';
+                                }
+                                ?>
+                                <i class="bi bi-shield-check fs-5 <?= $doc_class ?>" 
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-placement="top" 
+                                   title="<?= $doc_tooltip ?>"></i>
+                                <i class="bi bi-person-check fs-5 <?= $face_class ?> ms-2" 
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-placement="top" 
+                                   title="<?= $face_tooltip ?>"></i>
                             </td>
                             <?php if ($is_superadmin): ?>
                                 <td><?= htmlspecialchars($cliente['empresa_parceira'] ?? 'Nenhuma') ?></td>
@@ -104,7 +148,7 @@ try {
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="<?= $is_superadmin ? '9' : '8' ?>" class="text-center py-4 text-muted">Nenhum cliente encontrado.</td>
+                        <td colspan="<?= $is_superadmin ? '10' : '9' ?>" class="text-center py-4 text-muted">Nenhum cliente encontrado.</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
@@ -113,6 +157,12 @@ try {
 </div>
 
 <script>
+// Ativar tooltips do Bootstrap
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+});
+
 function reenviarConfirmacao(clienteId, nomeCliente) {
     if (!confirm(`Reenviar email de confirmação para ${nomeCliente}?`)) {
         return;
